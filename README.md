@@ -43,11 +43,11 @@ Level-Generator und Prüf-Tool: http://localhost:8080/tools/levelgen.html
 
 ## Online stellen (GitHub Pages)
 
-GitHub-Benutzer: `54fdndddz4-cloud`
+GitHub-Organisation: `pallet-rush`, Repository: `pallet-rush.github.io`
 
 ### Einmalig: Repository anlegen und hochladen
 
-1. Auf github.com ein neues, **öffentliches** Repository `pallet-rush` anlegen
+1. Auf github.com ein neues, **öffentliches** Repository `pallet-rush.github.io` in der Organisation `pallet-rush` anlegen
    (ohne README, ohne .gitignore, das Projekt hat beides schon).
 2. Im Projektordner:
 
@@ -55,14 +55,14 @@ GitHub-Benutzer: `54fdndddz4-cloud`
    git add .
    git commit -m "Pallet Rush 0.2.0"
    git branch -M main
-   git remote add origin https://github.com/54fdndddz4-cloud/pallet-rush.git
+   git remote add origin https://github.com/pallet-rush/pallet-rush.github.io.git
    git push -u origin main
    ```
 
 3. Auf GitHub im Repository: **Settings → Pages → Build and deployment**,
    Source „Deploy from a branch“, Branch `main`, Ordner `/ (root)`, Save.
 4. Nach 1–2 Minuten läuft das Spiel unter
-   `https://54fdndddz4-cloud.github.io/pallet-rush/`
+   `https://pallet-rush.github.io/`
 
 Auf dem Handy die Seite öffnen und „Zum Home-Bildschirm hinzufügen“ wählen
 (iPhone: Teilen-Knopf in Safari, Android: Menü in Chrome). Dann startet das
