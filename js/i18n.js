@@ -1,0 +1,165 @@
+// Texte auf Deutsch und Englisch.
+
+const STRINGS = {
+  de: {
+    play: 'Spielen',
+    level: 'Level',
+    levels: 'Level wählen',
+    settings: 'Einstellungen',
+    sound: 'Soundeffekte',
+    music: 'Musik',
+    vibration: 'Vibration',
+    vibrationNote: '(nur Android)',
+    symbols: 'Farbsymbole',
+    language: 'Sprache',
+    close: 'Schließen',
+    back: 'Zurück',
+    menu: 'Menü',
+    restart: 'Neu starten',
+    next: 'Weiter',
+    retry: 'Nochmal',
+    won: 'Geschafft!',
+    wonText: 'Alle LKWs sind beladen.',
+    firstTry: 'Beim ersten Versuch!',
+    lost: 'Alle Rampen belegt',
+    lostText: 'Keine Palette auf dem Band passt mehr zu einem LKW an der Rampe.',
+    lostStuck: 'Kein LKW kann mehr losfahren.',
+    noRamp: 'Keine Rampe frei',
+    oneRamp: 'Nur noch 1 Rampe frei!',
+    blocked: 'Weg versperrt',
+    locked: 'ab Level',
+    soon: 'Bald verfügbar',
+    allDone: 'Alle verfügbaren Level geschafft! Neue Level folgen.',
+    coins: 'Münzen',
+    pause: 'Pause',
+    resume: 'Weiterspielen',
+    booster_ramp: 'Extra-Rampe',
+    booster_shuffle: 'Umsortieren',
+    booster_crane: 'Kran',
+    booster_forklift: 'Gabelstapler',
+    credit: 'created by Nino Bernhardt',
+    tutorial1: 'Tippe einen LKW an. Er fährt vorwärts aus dem Hof, wenn der Weg frei ist.',
+    lostRushTitle: 'Zu spät!',
+    lostRush: 'Der Eilauftrag kam nicht rechtzeitig aus dem Hof.',
+    locked2: 'Angekettet! Erst muss der LKW mit dem Schlüssel raus.',
+    newMech: 'Neu!',
+    gotIt: 'Verstanden',
+    mech_hidden: 'Plane: Manche LKWs sind abgedeckt. Ihre Farbe siehst du erst, wenn ihr Weg frei ist.',
+    mech_gate: 'Tor: Aus dem Hallentor kommen weitere LKWs, sobald der Platz davor frei ist. Die Zahl zeigt, wie viele noch warten.',
+    mech_barrier: 'Schranke: Sie sperrt den Weg und öffnet sich, sobald genug LKWs abgefahren sind. Die Zahl zeigt, wie viele noch fehlen.',
+    mech_rush: 'Eilauftrag: Dieser LKW muss raus, bevor die Zahl auf 0 fällt. Jeder Zug zählt runter.',
+    mech_trailer: 'Anhängerzug: Er hat zwei Abteile, manchmal in zwei Farben. Er fährt erst ab, wenn beide voll sind.',
+    mech_chain: 'Kette: Ein LKW mit Schloss kann erst losfahren, wenn der LKW mit dem Schlüssel den Hof verlassen hat.',
+    mech_covered: 'Kartonpaletten: Manche Paletten sind verpackt. Welche Farbe drin ist, siehst du erst beim Einladen.',
+    mech_turntable: 'Drehscheibe: Der LKW darauf dreht sich nach jedem deiner Züge um 90°. Warte den richtigen Moment ab!',
+    mech_master: 'Meisterwelt: Ab jetzt kommen alle Mechaniken gemischt vor. Viel Erfolg!',
+    boosterNew: 'Neuer Bonus freigeschaltet!',
+    boosterFree: '3 Stück gratis',
+    bdesc_ramp: 'Extra-Rampe: Eine zusätzliche Rampe für den Rest des Levels (1× pro Level).',
+    bdesc_shuffle: 'Umsortieren: Mischt Band und Nachschub so, dass Paletten für deine geparkten LKWs nach vorne kommen.',
+    bdesc_crane: 'Kran: Hebt einen beliebigen LKW aus dem Stau direkt an eine freie Rampe.',
+    bdesc_forklift: 'Gabelstapler: Belädt einen LKW an der Rampe sofort voll.',
+    buy: 'Kaufen',
+    cancel: 'Abbrechen',
+    notEnough: 'Nicht genug Münzen',
+    onlyOnce: 'Nur einmal pro Level',
+    pickTruck: 'Tippe den LKW an, den der Kran holen soll',
+    pickDock: 'Tippe einen LKW an der Rampe an',
+    noDocked: 'Keine LKWs an der Rampe',
+    world: 'Welt',
+  },
+  en: {
+    play: 'Play',
+    level: 'Level',
+    levels: 'Select level',
+    settings: 'Settings',
+    sound: 'Sound effects',
+    music: 'Music',
+    vibration: 'Vibration',
+    vibrationNote: '(Android only)',
+    symbols: 'Color symbols',
+    language: 'Language',
+    close: 'Close',
+    back: 'Back',
+    menu: 'Menu',
+    restart: 'Restart',
+    next: 'Next',
+    retry: 'Try again',
+    won: 'Well done!',
+    wonText: 'All trucks are loaded.',
+    firstTry: 'First try!',
+    lost: 'All docks taken',
+    lostText: 'No pallet on the belt fits a truck at the docks.',
+    lostStuck: 'No truck can leave anymore.',
+    noRamp: 'No free dock',
+    oneRamp: 'Only 1 dock left!',
+    blocked: 'Way blocked',
+    locked: 'from level',
+    soon: 'Coming soon',
+    allDone: 'All available levels done! More levels coming.',
+    coins: 'Coins',
+    pause: 'Pause',
+    resume: 'Resume',
+    booster_ramp: 'Extra dock',
+    booster_shuffle: 'Reshuffle',
+    booster_crane: 'Crane',
+    booster_forklift: 'Forklift',
+    credit: 'created by Nino Bernhardt',
+    tutorial1: 'Tap a truck. It drives forward out of the yard if the way is clear.',
+    lostRushTitle: 'Too late!',
+    lostRush: 'The rush order did not leave the yard in time.',
+    locked2: 'Chained! The truck with the key has to leave first.',
+    newMech: 'New!',
+    gotIt: 'Got it',
+    mech_hidden: 'Tarp: Some trucks are covered. You see their color once their way is clear.',
+    mech_gate: 'Gate: More trucks come out of the gate as soon as the space in front is free. The number shows how many are waiting.',
+    mech_barrier: 'Barrier: It blocks the way and opens once enough trucks have departed. The number shows how many are still needed.',
+    mech_rush: 'Rush order: This truck must leave before the number reaches 0. Every move counts down.',
+    mech_trailer: 'Trailer truck: It has two compartments, sometimes in two colors. It only departs when both are full.',
+    mech_chain: 'Chain: A truck with a padlock can only leave after the truck with the key has left the yard.',
+    mech_covered: 'Boxed pallets: Some pallets are wrapped. You only see their color when they are loaded.',
+    mech_turntable: 'Turntable: The truck on it turns 90° after each of your moves. Wait for the right moment!',
+    mech_master: 'Master world: From now on all mechanics are mixed. Good luck!',
+    boosterNew: 'New booster unlocked!',
+    boosterFree: '3 for free',
+    bdesc_ramp: 'Extra dock: One more dock for the rest of the level (once per level).',
+    bdesc_shuffle: 'Reshuffle: Mixes belt and supply so pallets for your parked trucks come first.',
+    bdesc_crane: 'Crane: Lifts any truck out of the jam straight to a free dock.',
+    bdesc_forklift: 'Forklift: Instantly fills a truck at a dock.',
+    buy: 'Buy',
+    cancel: 'Cancel',
+    notEnough: 'Not enough coins',
+    onlyOnce: 'Only once per level',
+    pickTruck: 'Tap the truck the crane should lift',
+    pickDock: 'Tap a truck at a dock',
+    noDocked: 'No trucks at the docks',
+    world: 'World',
+  },
+};
+
+let lang = 'de';
+
+export function detectLang() {
+  const l = (navigator.language || 'de').slice(0, 2).toLowerCase();
+  return STRINGS[l] ? l : 'en';
+}
+
+export function setLang(l) {
+  lang = STRINGS[l] ? l : 'en';
+  document.documentElement.lang = lang;
+}
+
+export function getLang() {
+  return lang;
+}
+
+export function t(key) {
+  return STRINGS[lang][key] ?? STRINGS.de[key] ?? key;
+}
+
+// Füllt alle Elemente mit data-i18n="key".
+export function applyTexts(root = document) {
+  root.querySelectorAll('[data-i18n]').forEach((el) => {
+    el.textContent = t(el.dataset.i18n);
+  });
+}

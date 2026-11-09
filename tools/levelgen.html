@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Pallet Rush – Level-Generator</title>
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 20px; background: #f4f2ee; color: #222; }
+  button { font: inherit; padding: 6px 14px; margin-right: 8px; }
+  table { border-collapse: collapse; margin-top: 12px; }
+  td, th { border: 1px solid #ccc; padding: 3px 8px; text-align: right; }
+  .bad { color: #b00; font-weight: bold; }
+  .ok { color: #070; }
+  #log { white-space: pre-wrap; font-family: monospace; margin-top: 10px; }
+</style>
+</head>
+<body>
+<h1>Level-Generator &amp; Prüfung</h1>
+<p>„Generieren“ baut alle Level aus <code>js/data/levelplan.js</code> neu und prüft sie mit dem Solver.
+„Bestehende prüfen“ verifiziert <code>js/data/levels.js</code>. Speichern funktioniert nur mit <code>tools/devserver.py</code>.</p>
+Level <input id="from" type="number" value="1" style="width:60px"> bis <input id="to" type="number" value="100" style="width:60px">
+<button id="gen">Generieren</button>
+<button id="save" disabled>Speichern nach js/data/levels.js</button>
+<button id="check">Bestehende prüfen</button>
+<div id="log"></div>
+<table id="tbl"><thead><tr><th>Level</th><th>LKWs</th><th>Paletten</th><th>Seed</th><th>Fairer Start</th><th>Erfolgsquote</th><th>Solver-Knoten</th><th>Mechaniken</th><th>Status</th></tr></thead><tbody></tbody></table>
+<script type="module" src="levelgen.js"></script>
+</body>
+</html>
