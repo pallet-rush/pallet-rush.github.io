@@ -31,6 +31,21 @@ const DEV = new URLSearchParams(location.search).has('dev');
 
 const $ = (s) => document.querySelector(s);
 
+// iOS-Homescreen-App: Fensterhöhe ist dort teils um die Statusleiste zu klein.
+// Die Lücke zum echten Bildschirm messen und per CSS-Variable ausgleichen.
+let vgap = 0;
+function fixViewportGap() {
+  const standalone = navigator.standalone === true || window.matchMedia?.('(display-mode: standalone)').matches;
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const portrait = window.innerHeight >= window.innerWidth;
+  const gap = standalone && ios && portrait ? Math.max(screen.height, screen.width) - window.innerHeight : 0;
+  vgap = gap > 0 && gap < 100 ? gap : 0;
+  document.documentElement.style.setProperty('--vgap', vgap + 'px');
+}
+fixViewportGap();
+window.addEventListener('resize', fixViewportGap);
+window.addEventListener('orientationchange', () => setTimeout(fixViewportGap, 300));
+
 let save = loadSave();
 setLang(save.settings.lang || detectLang());
 configureAudio(save.settings);
@@ -192,7 +207,7 @@ function showIntros(n) {
 function measureInsets() {
   const hud = $('#hud').getBoundingClientRect();
   const b = $('#boosters').getBoundingClientRect();
-  view.setInsets(hud.bottom, window.innerHeight - b.top);
+  view.setInsets(hud.bottom, window.innerHeight + vgap - b.top);
 }
 
 function updateCoins() {
