@@ -182,6 +182,8 @@ function lateLevel(w, j) {
   // und eine Falle weniger
   const crowded = p.require.includes('gate') && p.require.includes('barrier');
   if (crowded) p.traps = Math.min(p.traps, 6);
+  // Boss-Level ab Welt 21 haben schon drei Mechaniken und mehr LKWs: 6 Fallen reichen
+  if (boss && tier) p.traps = 6;
   if (boss && !crowded) {
     const [c] = COMBOS[(w - 9) % COMBOS.length].filter((m) => m !== a && m !== b);
     if (c) addMech(p, c, false);

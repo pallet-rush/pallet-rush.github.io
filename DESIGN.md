@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 11.11.2026 · Version 0.6.0
+Stand: 11.11.2026 · Version 0.6.1
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -61,7 +61,7 @@ dieser Farbe.
 - Ein LKW setzt erst rückwärts in die Bucht, wenn sie wirklich frei ist; sonst
   wartet er davor. LKWs fahren nie ineinander.
 
-## 5. Welten und Mechaniken (200 Level)
+## 5. Welten und Mechaniken (300 Level)
 
 Alle 10 Level beginnt eine neue Welt mit einer neuen Mechanik. Die erste
 Begegnung wird mit einem kurzen Hinweis-Fenster erklärt. Es gibt keine
@@ -103,8 +103,28 @@ dann steigt sie bis zum Boss-Level. Zwei Tore in einem Level gibt es hier nicht
 | 19 | 181–190 | Frachtflughafen | Tor + Kette |
 | 20 | 191–200 | Kronlager | Schranke + Drehscheibe |
 
-Plan und Kombinationen für die Welten 21–30 stehen schon in
-`js/data/levelplan.js` (`COMBOS`, `lateLevel`), ihre Level sind noch nicht erzeugt.
+### Welten 21–30 (ab v0.6.1, Level 201–300)
+
+Gleiches Prinzip, eine Stufe schwerer (dichter, mehr Fallen, der simulierte
+Spieler gewinnt im Schnitt nur noch rund 10 %). Boss-Level hier mit 6 Fallen
+(drei Mechaniken und viele LKWs, 7 ließen sich nicht erzeugen).
+
+| Welt | Level | Name | Mechaniken |
+|---|---|---|---|
+| 21 | 201–210 | Nachtlager | Plane + Schranke |
+| 22 | 211–220 | Mondhafen | Tor + Eilauftrag |
+| 23 | 221–230 | Sternenwüste | Anhängerzug + Kartonpaletten |
+| 24 | 231–240 | Polarnacht | Kette + Plane |
+| 25 | 241–250 | Neonnacht | Drehscheibe + Tor |
+| 26 | 251–260 | Mitternachtswald | Eilauftrag + Anhängerzug |
+| 27 | 261–270 | Lagunenhafen | Kartonpaletten + Schranke |
+| 28 | 271–280 | Nachtschicht | Kette + Eilauftrag |
+| 29 | 281–290 | Nachtflug | Drehscheibe + Plane |
+| 30 | 291–300 | Schatzkammer | Tor + Kartonpaletten |
+
+Simulierter Spieler (Gewinnquote Ø): Welten 11–20 zwischen 9 und 17 %,
+Welten 21–30 zwischen 7 und 14 %. Erzeugt parallel in Web Workern
+(`tools/levelgen-worker.js`, `lg.generateParallel(von, bis, worker, versuche)`).
 
 Weltbanner 11–30 sind Farbvarianten der Banner 1–10: Welten 11–20 in
 Abendstimmung, Welten 21–30 bei Nacht (warme Lichter bleiben hell). Erzeugt mit
