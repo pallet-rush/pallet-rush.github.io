@@ -458,9 +458,10 @@ function handleLost(reason) {
   });
 }
 
-// Weiterspielen wird mit den Leveln teurer (früh günstig, später wie die Extra-Rampe)
+// Weiterspielen kostet genau so viel wie die Extra-Rampe im Bonus-Laden (ab v0.6.2;
+// vorher günstiger – dann lohnte es sich nie, die Rampe vorher zu kaufen)
 function continuePrice() {
-  return Math.min(BOOSTERS[0].price, 100 + 10 * Math.floor((levelNo - 1) / 7));
+  return BOOSTERS[0].price;
 }
 
 // Niederlage aufheben: Extra-Rampe einsetzen (Bonus-Vorrat oder Münzen) und weiterspielen

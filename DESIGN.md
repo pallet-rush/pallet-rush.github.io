@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 11.11.2026 · Version 0.6.1
+Stand: 11.11.2026 · Version 0.6.2
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -158,7 +158,8 @@ mit Münzen kaufen.
   jedes 10. Level ab 20 ist „Sehr schwer“ (×2). Kennzeichnung im Start-Banner,
   im HUD und in der Levelauswahl.
 - **Weiterspielen** nach „Alle Rampen belegt“: +1 Rampe aus dem Bonus-Vorrat
-  (gratis) oder für 100–250 Münzen (steigt mit dem Level).
+  (gratis) oder für 250 Münzen – so viel wie die Extra-Rampe im Bonus-Laden
+  (ab v0.6.2; vorher 100–250 je nach Level, also billiger als der Bonus).
 - Keine Werbung, keine Echtgeld-Käufe, keine Leben, keine Wartezeiten.
 
 ## 7b. Duell (ab v0.3.8)
