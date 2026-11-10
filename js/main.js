@@ -92,11 +92,14 @@ let pending = false; // Bonus wartet auf Ende der Animationen
 let selecting = null; // 'crane' | 'forklift'
 let attempt = 1;      // Versuch im aktuellen Level (für Sterne)
 let usedBoosters = 0; // eingesetzte Boni im aktuellen Versuch (für Sterne)
+// Duell: { level, opp: { n, t, m, code } | null, t0, time, timer }
+let duel = null;
 
 // ---------- Menü ----------
 function showMenu() {
   if (game) fadeScreen();
   game = null;
+  endDuel();
   hideBanner();
   view.setInsets(0, 0);
   view.setGame(null);
@@ -134,6 +137,9 @@ function startLevel(n) {
   $('#menu').classList.add('hidden');
   $('#hud').classList.remove('hidden');
   $('#boosters').classList.remove('hidden');
+  document.body.classList.toggle('duel-mode', !!duel);
+  $('#hud-duel').classList.toggle('hidden', !duel);
+  if (duel) resetDuelClock();
   setHudLevel();
   updateCoins();
   refreshBoosters();
@@ -153,7 +159,9 @@ function setHudLevel() {
   const d = difficulty(levelNo);
   const el = $('#hud-level');
   el.className = 'hud-level ' + d;
-  el.innerHTML = `${d === 'normal' ? '' : `<span class="lv-diff ${d}"></span>`}${t('level')} ${levelNo}`;
+  el.innerHTML = duel
+    ? `<span class="duel-tag">${t('duelHud')}</span>${t('level')} ${levelNo}`
+    : `${d === 'normal' ? '' : `<span class="lv-diff ${d}"></span>`}${t('level')} ${levelNo}`;
   el.title = d === 'normal' ? '' : t(d);
 }
 
@@ -260,6 +268,7 @@ function handleTap(id) {
   }
   const res = game.tap(id);
   if (res.ok) {
+    if (duel && !duel.t0) startDuelClock();
     if (hintShown) { hideToast(); hintShown = false; }
     updateGuide();
     hideBanner();
@@ -331,6 +340,7 @@ function levelRecord(n) {
 function handleWon() {
   if (!game) return;
   setSelecting(null);
+  if (duel) { duelWon(); return; }
   const rec = levelRecord(levelNo);
   const firstWin = !rec.won;
   const firstTry = firstWin && rec.fails === 0;
@@ -392,6 +402,7 @@ function countUp(el, from, to, ms, fmt = (v) => String(v)) {
 function handleLost(reason) {
   if (!game) return;
   setSelecting(null);
+  if (duel) { duelLost(); return; }
   levelRecord(levelNo).fails++;
   save.stats.lost++;
   writeSave(save);
@@ -451,7 +462,7 @@ function continueWithRamp(def, free) {
 }
 
 function restartLevel() {
-  if (game && game.moves > 0 && game.status === 'playing') {
+  if (game && game.moves > 0 && game.status === 'playing' && !duel) {
     levelRecord(levelNo).fails++;
     writeSave(save);
   }
@@ -492,6 +503,7 @@ function refreshBoosters() {
 
 function onBooster(def) {
   unlockAudio();
+  if (duel) return;
   if (!boosterAvailable(def)) {
     toast(`${t('booster_' + def.key)}: ${t('locked')} ${def.unlock}`);
     return;
@@ -696,7 +708,7 @@ function showLevels() {
   html += `<div class="diff-legend"><span><i class="lv-diff hard"></i>${t('hard')}</span><span><i class="lv-diff vhard"></i>${t('vhard')}</span><span><span class="coin small"></span>${t('hardBonus')}</span></div>`;
   showDialog({ title: t('levels'), cls: 'levels', html, actions: [{ label: t('back'), fn: hideModal }] });
   $('#modal-panel').querySelectorAll('[data-l]').forEach((b) => {
-    b.onclick = () => { unlockAudio(); goFullscreen(); startLevel(+b.dataset.l); };
+    b.onclick = () => { unlockAudio(); goFullscreen(); endDuel(); startLevel(+b.dataset.l); };
   });
   const cur = $('#modal-panel').querySelector('.current');
   if (cur) cur.scrollIntoView({ block: 'center' });
@@ -710,7 +722,8 @@ function goFullscreen() {
 }
 
 // ---------- Verkabelung ----------
-$('#btn-play').onclick = () => { unlockAudio(); goFullscreen(); startLevel(Math.min(save.level, LEVELS.length)); };
+$('#btn-play').onclick = () => { unlockAudio(); goFullscreen(); endDuel(); startLevel(Math.min(save.level, LEVELS.length)); };
+$('#btn-duel').onclick = () => { unlockAudio(); showDuelMenu(); };
 $('#btn-levels').onclick = () => { unlockAudio(); showLevels(); };
 $('#btn-settings').onclick = () => { unlockAudio(); showSettings(); };
 $('#btn-pause').onclick = () => showPause();
@@ -730,7 +743,8 @@ window.addEventListener('resize', () => { if (game) measureInsets(); });
 unlockBoosters();
 writeSave(save);
 showMenu();
-bootSplash().then(() => setTimeout(checkDaily, 700));
+const incomingDuel = readDuelLink();
+bootSplash().then(() => setTimeout(() => (incomingDuel ? showChallenge(incomingDuel) : checkDaily()), incomingDuel ? 250 : 700));
 registerSW();
 
 // ---------- Ladebildschirm ----------
@@ -827,4 +841,251 @@ function coinBurst(target) {
 }
 
 // Für Tests in der Konsole
-window.__pr = { get game() { return game; }, view, startLevel, get save() { return save; }, onBooster: (k) => onBooster(BOOSTERS.find((b) => b.key === k)) };
+window.__pr = { get game() { return game; }, get duel() { return duel; }, startDuel, duelCode, view, startLevel, get save() { return save; }, onBooster: (k) => onBooster(BOOSTERS.find((b) => b.key === k)) };
+
+// ---------- Duell per Link ----------
+// Ein Spieler schafft ein Level auf Zeit und schickt einen Link mit Level, Zeit, Zügen
+// und Namen. Wer den Link öffnet, spielt dasselbe Level gegen diese Zeit. Kein Server nötig.
+const DUEL_REWARD = 40;
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fill = (str, o) => str.replace(/\{(\w)\}/g, (_, k) => (o[k] ?? ''));
+
+function fmtTime(ms) {
+  const s = Math.max(0, ms) / 1000;
+  const m = Math.floor(s / 60);
+  const r = s - m * 60;
+  return m > 0 ? `${m}:${r.toFixed(1).padStart(4, '0')}` : `${r.toFixed(1)} s`;
+}
+function fmtClock(ms) {
+  const s = Math.floor(Math.max(0, ms) / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function cleanNick(v) {
+  return String(v || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 14);
+}
+
+function duelCode(l, time, moves, n) {
+  const json = JSON.stringify({ v: 1, l, t: Math.round(time), m: moves, n: cleanNick(n) });
+  const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(json)));
+  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function parseDuelCode(code) {
+  try {
+    const b64 = code.replace(/-/g, '+').replace(/_/g, '/');
+    const bin = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4));
+    const o = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0))));
+    const l = Number(o.l), tm = Number(o.t), m = Number(o.m);
+    if (!Number.isInteger(l) || l < 1 || l > LEVELS.length) return null;
+    if (!Number.isFinite(tm) || tm < 500 || tm > 3600000) return null;
+    return { l, t: Math.round(tm), m: Number.isInteger(m) && m > 0 && m < 10000 ? m : 0, n: cleanNick(o.n) || '???', code: code.slice(0, 200) };
+  } catch { return null; }
+}
+
+function readDuelLink() {
+  const p = new URLSearchParams(location.search);
+  const code = p.get('duel');
+  if (code === null) return null;
+  // Link aus der Adresszeile entfernen, damit ein Neuladen nicht erneut fragt
+  p.delete('duel');
+  const q = p.toString();
+  try { history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash); } catch {}
+  return parseDuelCode(code) || { bad: true };
+}
+
+function duelUrl(code) {
+  const base = location.protocol === 'https:' || location.hostname === 'localhost' ? location.origin + location.pathname : 'https://pallet-rush.github.io/';
+  return `${base}?duel=${code}`;
+}
+
+function startDuel(level, opp = null) {
+  duel = { level, opp, t0: 0, time: 0, timer: 0 };
+  goFullscreen();
+  startLevel(level);
+}
+
+function endDuel() {
+  if (duel) clearInterval(duel.timer);
+  duel = null;
+  document.body.classList.remove('duel-mode');
+  $('#hud-duel').classList.add('hidden');
+}
+
+function resetDuelClock() {
+  clearInterval(duel.timer);
+  duel.t0 = 0;
+  duel.time = 0;
+  $('#hud-time').textContent = '0:00';
+  $('#hud-duel').classList.remove('ahead', 'behind', 'running');
+  $('#hud-opp').innerHTML = duel.opp ? `<b>${esc(duel.opp.n)}</b> ${fmtClock(duel.opp.t)}` : '';
+  $('#hud-opp').classList.toggle('hidden', !duel.opp);
+}
+
+function startDuelClock() {
+  duel.t0 = performance.now();
+  $('#hud-duel').classList.add('running');
+  const tick = () => {
+    if (!duel || !duel.t0 || duel.time) return;
+    const ms = performance.now() - duel.t0;
+    $('#hud-time').textContent = fmtClock(ms);
+    if (duel.opp) $('#hud-duel').classList.toggle('behind', ms > duel.opp.t);
+  };
+  tick();
+  duel.timer = setInterval(tick, 200);
+}
+
+function stopDuelClock() {
+  clearInterval(duel.timer);
+  duel.time = duel.t0 ? performance.now() - duel.t0 : 0;
+  $('#hud-duel').classList.remove('running');
+  $('#hud-time').textContent = fmtTime(duel.time);
+  return duel.time;
+}
+
+// Name einmalig abfragen, dann weiter
+function askNick(then) {
+  if (save.nick) { then(); return; }
+  showDialog({
+    title: t('nickTitle'),
+    text: t('nickText'),
+    html: `<input id="nick-input" class="nick-input" maxlength="14" autocomplete="nickname" enterkeyhint="done" placeholder="${t('nickPh')}">`,
+    actions: [{ label: t('ok'), cls: 'primary', fn: () => {
+      const v = cleanNick($('#nick-input').value);
+      if (!v) { $('#nick-input').focus(); $('#nick-input').classList.add('shake'); return; }
+      save.nick = v;
+      writeSave(save);
+      then();
+    } }],
+  });
+  const inp = $('#nick-input');
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#modal-panel .btn.primary').click(); });
+  setTimeout(() => inp.focus(), 200);
+}
+
+// Zufälliges Level aus den zuletzt freigeschalteten (bekannte Mechaniken)
+function pickDuelLevel() {
+  const hi = Math.max(1, Math.min(save.maxLevel, LEVELS.length));
+  const lo = Math.max(1, hi - 14);
+  return lo + Math.floor(Math.random() * (hi - lo + 1));
+}
+
+function showDuelMenu() {
+  askNick(() => {
+    showDialog({
+      title: t('duelTitle'),
+      cls: 'duel',
+      html: `<div class="duel-art"><svg viewBox="0 0 48 48"><use href="#i-duel"/></svg></div><p>${t('duelIntro')}</p><p class="duel-rules">${t('duelRules')}</p>`,
+      actions: [
+        { label: t('duelStart'), cls: 'primary pulse', fn: () => startDuel(pickDuelLevel()) },
+        { label: t('back'), cls: 'quiet', fn: hideModal },
+      ],
+    });
+  });
+}
+
+function showChallenge(c) {
+  if (c.bad) { toast(t('duelBadLink'), 2500); checkDaily(); return; }
+  showDialog({
+    title: t('challengeTitle'),
+    cls: 'duel',
+    html: `<div class="duel-art"><svg viewBox="0 0 48 48"><use href="#i-duel"/></svg></div><p>${fill(t('challengeText'), { n: `<b>${esc(c.n)}</b>`, l: c.l, t: `<b>${fmtTime(c.t)}</b>` })}</p><p class="duel-rules">${t('duelRules')}</p>`,
+    actions: [
+      { label: t('accept'), cls: 'primary pulse', fn: () => askNick(() => startDuel(c.l, c)) },
+      { label: t('decline'), cls: 'quiet', fn: () => { hideModal(); setTimeout(checkDaily, 400); } },
+    ],
+  });
+}
+
+function duelWon() {
+  const time = stopDuelClock();
+  const opp = duel.opp;
+  const moves = game.moves;
+  $('#warn').classList.add('hidden');
+  sfx.win();
+  view.celebrate?.();
+  updateProgress();
+  save.stats.won++;
+  let title = t('duelDone'), text = t('duelDoneText'), reward = 0, cls = 'win duel';
+  if (opp) {
+    const diff = Math.abs(time - opp.t);
+    if (Math.round(time / 100) === Math.round(opp.t / 100)) { title = t('duelTie'); text = ''; }
+    else if (time < opp.t) {
+      title = t('duelWin');
+      text = fill(t('duelWinText'), { d: fmtTime(diff), n: esc(opp.n) });
+      if (save.duels[opp.code] === undefined) reward = DUEL_REWARD;
+    } else {
+      title = t('duelLose');
+      text = fill(t('duelLoseText'), { d: fmtTime(diff), n: esc(opp.n) });
+      cls = 'duel lose-duel';
+    }
+    const best = save.duels[opp.code];
+    save.duels[opp.code] = best === undefined ? Math.round(time) : Math.min(best, Math.round(time));
+    // nur die letzten 50 Duelle merken
+    const keys = Object.keys(save.duels);
+    if (keys.length > 50) for (const k of keys.slice(0, keys.length - 50)) delete save.duels[k];
+  }
+  const coinsBefore = save.coins;
+  save.coins += reward;
+  writeSave(save);
+  const row = (name, ms, me) => `<div class="dr ${me ? 'me' : ''}"><span>${name}</span><b>${fmtTime(ms)}</b></div>`;
+  const rows = opp && time >= opp.t
+    ? row(esc(opp.n), opp.t, false) + row(esc(save.nick), time, true)
+    : row(esc(save.nick), time, true) + (opp ? row(esc(opp.n), opp.t, false) : '');
+  showDialog({
+    title,
+    cls,
+    html: `<div class="duel-board"><small>${t('level')} ${levelNo}</small>${rows}</div>${text ? `<p>${text}</p>` : ''}${reward ? `<div class="reward"><span class="coin"></span><span class="reward-num">+${reward}</span> <small>${t('duelReward')}</small></div>` : ''}`,
+    // Verloren: zuerst „Nochmal“; sonst zuerst Herausfordern
+    actions: (cls.includes('lose-duel') ? [
+      { label: t('again'), cls: 'primary pulse', fn: () => startLevel(levelNo) },
+      { label: t('challenge'), fn: () => shareDuel(levelNo, time, moves) },
+    ] : [
+      { label: opp ? t('challengeBack') : t('challenge'), cls: 'primary pulse', fn: () => shareDuel(levelNo, time, moves) },
+      { label: t('again'), fn: () => startLevel(levelNo) },
+    ]).concat([{ label: t('menu'), cls: 'quiet', fn: showMenu }]),
+  });
+  if (reward) setTimeout(() => { countUp($('#hud-coins'), coinsBefore, save.coins, 900); sfx.coin(); }, 500);
+}
+
+function duelLost() {
+  stopDuelClock();
+  save.stats.lost++;
+  writeSave(save);
+  $('#warn').classList.add('hidden');
+  sfx.lose();
+  vibrate(60);
+  showDialog({
+    title: t('lost'),
+    cls: 'lose',
+    html: `<img class="result-art lose" src="assets/lose.png" alt=""><p>${t('duelLostText')}</p>`,
+    actions: [
+      { label: t('again'), cls: 'primary', fn: () => startLevel(levelNo) },
+      { label: t('menu'), cls: 'quiet', fn: showMenu },
+    ],
+  });
+}
+
+async function shareDuel(l, time, moves) {
+  const url = duelUrl(duelCode(l, time, moves, save.nick));
+  const text = fill(t('shareText'), { l, t: fmtTime(time) });
+  if (navigator.share) {
+    try { await navigator.share({ title: 'Pallet Rush', text, url }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  try {
+    await navigator.clipboard.writeText(`${text} ${url}`);
+    toast(t('linkCopied'), 2500);
+    return;
+  } catch {}
+  // Letzte Möglichkeit: Link zum Markieren anzeigen
+  const keep = $('#modal-panel .actions');
+  const box = document.createElement('input');
+  box.className = 'nick-input link-box';
+  box.readOnly = true;
+  box.value = url;
+  box.setAttribute('aria-label', t('copyLink'));
+  keep.parentElement.insertBefore(box, keep);
+  box.focus();
+  box.select();
+}

@@ -132,6 +132,15 @@
     <path d="M30.5 14.5l3 3 5.5-6.5" fill="none" stroke="#2fb34a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M9.5 35.5l3 3 5.5-6.5" fill="none" stroke="#2fb34a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
   </symbol>
+  <symbol id="i-duel" viewBox="0 0 48 48">
+    <rect x="20" y="3" width="8" height="5" rx="2" fill="#fff"/>
+    <path d="M35.5 9.5l3.5 3.5" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/>
+    <circle cx="24" cy="27" r="17" fill="#fff"/>
+    <circle cx="24" cy="27" r="12.5" fill="#ffe6d6"/>
+    <path d="M24 27V17.5" stroke="#e8471c" stroke-width="4" stroke-linecap="round"/>
+    <path d="M24 27l6.5 4" stroke="#e8471c" stroke-width="3.2" stroke-linecap="round"/>
+    <circle cx="24" cy="27" r="3" fill="#e8471c"/>
+  </symbol>
   <symbol id="i-gear" viewBox="0 0 48 48">
     <circle cx="24" cy="24" r="15" fill="none" stroke="#fff" stroke-width="9" stroke-dasharray="6.6 5.18"/>
     <circle cx="24" cy="24" r="13.5" fill="#fff"/>
@@ -154,6 +163,7 @@
   <div class="hud-center">
     <div id="hud-level" class="hud-level">Level 1</div>
     <div id="hud-progress" class="hud-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>
+    <div id="hud-duel" class="hud-duel hidden"><span class="hd-me"><i class="hd-clock"></i><b id="hud-time">0:00</b></span><span id="hud-opp" class="hd-opp"></span></div>
   </div>
   <div class="coins"><span class="coin"></span><span id="hud-coins">0</span></div>
   <button id="btn-restart" class="icon-btn" aria-label="Neu starten"><svg class="ui-icon"><use href="#i-restart"/></svg></button>
@@ -225,7 +235,8 @@
     </button>
     <div class="menu-row">
       <button id="btn-levels" class="tile-btn tile-blue"><span class="tile-ico"><svg viewBox="0 0 48 48"><use href="#i-levels"/></svg></span><span class="tile-label" data-i18n="levels"></span></button>
-      <button id="btn-settings" class="tile-btn tile-purple"><span class="tile-ico"><svg viewBox="0 0 48 48"><use href="#i-gear"/></svg></span><span class="tile-label" data-i18n="settings"></span></button>
+      <button id="btn-duel" class="tile-btn tile-orange"><span class="tile-ico"><svg viewBox="0 0 48 48"><use href="#i-duel"/></svg></span><span class="tile-label" data-i18n="duel"></span></button>
+      <button id="btn-settings" class="tile-btn tile-purple"><span class="tile-ico"><svg viewBox="0 0 48 48"><use href="#i-gear"/></svg></span><span class="tile-label" data-i18n="settingsShort"></span></button>
     </div>
   </div>
 

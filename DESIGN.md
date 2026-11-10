@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 10.11.2026 · Version 0.3.7
+Stand: 10.11.2026 · Version 0.3.8
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -111,6 +111,21 @@ mit Münzen kaufen.
 - **Weiterspielen** nach „Alle Rampen belegt“: +1 Rampe aus dem Bonus-Vorrat
   (gratis) oder für 100–250 Münzen (steigt mit dem Level).
 - Keine Werbung, keine Echtgeld-Käufe, keine Leben, keine Wartezeiten.
+
+## 7b. Duell (ab v0.3.8)
+
+- Menü-Kachel „Duell“: zufälliges Level aus den letzten 15 freigeschalteten.
+  Die Uhr startet beim ersten LKW (Erklärfenster zählen nicht), stoppt beim Sieg.
+  Keine Boni, kein Weiterspielen; „Nochmal“ setzt die Uhr zurück. Pause stoppt die Uhr nicht.
+- Herausfordern per Link ohne Server: `?duel=<base64url JSON {v,l,t,m,n}>`
+  (Level, Zeit in ms, Züge, Name). Teilen über das System-Teilen-Menü,
+  sonst Zwischenablage, sonst Link-Feld zum Markieren.
+- Link öffnen: Fenster „X hat Level N in Zeit geschafft“ → Annehmen spielt das
+  Level (auch wenn noch nicht freigeschaltet), danach Vergleich und „Zurückfordern“.
+- Name einmalig abfragen (max. 14 Zeichen, gespeichert in `save.nick`);
+  Namen aus Links werden bereinigt und HTML-escaped.
+- Sieg im Duell: +40 Münzen, pro Herausforderung nur einmal (`save.duels`, letzte 50).
+  Duelle ändern keinen Level-Fortschritt, keine Sterne, keine Fehlversuche.
 
 ## 8. Fairness-Garantien (Level-Pipeline)
 

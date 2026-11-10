@@ -34,6 +34,8 @@ export function defaultSave() {
     stats: { played: 0, won: 0, lost: 0, boostersUsed: 0 },
     seenTips: {},      // bereits gezeigte Erklärungen (Mechaniken, Boni)
     daily: { last: '', streak: 0 }, // tägliche Belohnung: letzter Tag (YYYY-MM-DD), Serie
+    nick: '',          // Name im Duell
+    duels: {},         // { [code]: Bestzeit ms } – Sieg-Bonus gibt es pro Herausforderung nur einmal
   };
 }
 
