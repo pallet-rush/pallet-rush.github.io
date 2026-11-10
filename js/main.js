@@ -778,6 +778,29 @@ const incomingLive = readLiveLink();
 bootSplash().then(() => setTimeout(() => (incomingLive ? liveJoin(incomingLive) : incomingDuel ? showChallenge(incomingDuel) : checkDaily()), incomingDuel || incomingLive ? 250 : 700));
 registerSW();
 
+// Neue Version automatisch holen: Homescreen-Apps (v. a. iOS) laufen oft tagelang
+// im Hintergrund weiter und laden die Seite beim Öffnen nicht neu. Deshalb beim
+// Start und bei jeder Rückkehr in die App die Online-Version prüfen und – nur im
+// Menü, nie mitten im Level oder Duell – neu laden.
+async function checkUpdate() {
+  if (location.protocol !== 'https:' || document.hidden) return;
+  try {
+    const r = await fetch('js/version.js?u=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const m = (await r.text()).match(/VERSION\s*=\s*'([^']+)'/);
+    if (!m || m[1] === VERSION) return;
+    if (game || live || modalOpen()) return; // später erneut
+    if (sessionStorage.getItem('pr-upd') === m[1]) return; // schon versucht, keine Schleife
+    sessionStorage.setItem('pr-upd', m[1]);
+    try { const reg = await navigator.serviceWorker?.getRegistration(); await reg?.update(); } catch {}
+    location.reload();
+  } catch {}
+}
+setTimeout(checkUpdate, 1500);
+setInterval(checkUpdate, 5 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(checkUpdate, 400); });
+window.addEventListener('pageshow', (e) => { if (e.persisted) setTimeout(checkUpdate, 400); });
+
 // ---------- Ladebildschirm ----------
 // Wartet, bis die wichtigsten Bilder geladen sind (max. 6 s), dann sanftes Ausblenden.
 function bootSplash() {

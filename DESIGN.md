@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 10.11.2026 · Version 0.4.0
+Stand: 10.11.2026 · Version 0.4.1
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -257,5 +257,8 @@ umschaltbar.
 - Credit „created by Nino Bernhardt“ im Hauptmenü.
 - Offline spielbar: Service Worker `sw.js` (Code network-first, Bilder
   cache-first, Cache-Version = `VERSION`; auf localhost nur mit `?sw`).
+- Auto-Update (ab v0.4.1): beim Start, bei Rückkehr in die App und alle 5 Min.
+  wird `js/version.js` online geprüft; ist sie neuer, lädt die App neu – nur im
+  Menü (nie im Level, Duell oder Dialog), höchstens einmal pro Version und Sitzung.
 - Vorbereitet für einen späteren Store-Release (PWA-Manifest; später z. B.
   mit Capacitor verpackbar).
