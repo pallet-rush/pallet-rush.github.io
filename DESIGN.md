@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 10.11.2026 · Version 0.5.1
+Stand: 10.11.2026 · Version 0.5.2
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -39,7 +39,7 @@ Inhalte übernommen.
 | Verloren | Alle Rampen sind belegt und keiner der 3 Blöcke an den Ausgabeplätzen passt zu einem geparkten LKW. Dann ist keine Aktion mehr möglich. |
 | Undo | Gibt es nicht. |
 | Leben | Kein Leben-System. Nach einer Niederlage startet man das Level sofort neu, ohne Wartezeit. |
-| Warnung | Ist nur noch 1 Rampe frei, erscheint ruhig „Nur noch 1 Rampe frei!“. Die Niederlage wird nur gemeldet, wenn sie laut Spiellogik wirklich feststeht, also keine falschen Meldungen. |
+| Warnung | Keine Einblendung bei „nur noch 1 Rampe frei“ (ab v0.5.2 entfernt, sie hat gestört). Die Niederlage wird nur gemeldet, wenn sie laut Spiellogik wirklich feststeht, also keine falschen Meldungen. |
 
 Die Palettenzahl jeder Farbe entspricht exakt der Ladekapazität aller LKWs
 dieser Farbe.

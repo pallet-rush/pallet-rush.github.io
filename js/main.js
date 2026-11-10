@@ -347,23 +347,12 @@ function handleDockTap(r) {
   useForklift(r);
 }
 
+// Die frühere Einblendung „Nur noch 1 Rampe frei!“ (samt Warnton) ist abgeschaltet:
+// Sie kam ständig und hat gestört. Die belegten Rampen sieht man ohnehin.
 function updateWarn() {
-  if (!game) return;
-  const on = game.status === 'playing' && game.freeRampCount() === 1 && game.lotCount() > 0;
-  const el = $('#warn');
-  if (on && !warnOn) {
-    const [x, y] = view.warnAnchor();
-    el.style.left = x + 'px';
-    el.style.top = y + 'px';
-    el.textContent = t('oneRamp');
-    el.classList.remove('hidden', 'pulse');
-    void el.offsetWidth;
-    el.classList.add('pulse');
-    sfx.warn();
-  } else if (!on && warnOn) {
-    el.classList.add('hidden');
-  }
-  warnOn = on;
+  if (!warnOn) return;
+  warnOn = false;
+  $('#warn').classList.add('hidden');
 }
 
 function levelRecord(n) {
