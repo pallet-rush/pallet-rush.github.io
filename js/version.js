@@ -1,2 +1,2 @@
 // Bei JEDEM Update erhöhen. Steht im Hauptmenü, damit man sieht, ob die neue Version online ist.
-export const VERSION = '0.6.2';
+export const VERSION = '0.6.3';

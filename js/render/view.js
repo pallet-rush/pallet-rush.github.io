@@ -951,12 +951,13 @@ export class GameView {
       const ev = this.loads[i];
       const tv = this.tvs[ev.id];
       const sl = this._slotOf.get(Math.floor(ev.q / COLS));
-      if (!sl || busy.has(sl) || now < (this.slotNext[sl] || 0) || tv.state !== 'dock' || now - tv.dockAt < 160) {
-        if (sl) busy.add(sl); // Reihenfolge je Auslauf wahren
+      const ch = sl && sl[0]; // Rutsche: L2/R2 nutzen die Rutsche ihrer Seite
+      if (!sl || busy.has(ch) || now < (this.slotNext[ch] || 0) || tv.state !== 'dock' || now - tv.dockAt < 160) {
+        if (sl) busy.add(ch); // Reihenfolge je Rutsche wahren
         i++;
         continue;
       }
-      busy.add(sl);
+      busy.add(ch);
       this.loads.splice(i, 1);
       const st = this.pp.get(ev.q) || { x: L.S.x, y: L.S.y };
       this.vGone.add(ev.q);
@@ -966,11 +967,11 @@ export class GameView {
       const sc = this.slotPos(sl, 1.5);
       const pts = [{ x: st.x, y: st.y }];
       if (Math.hypot(st.x - sc.x, st.y - sc.y) > 3) pts.push({ x: sc.x, y: sc.y });
-      const cp = this.chutePts(sl);
+      const cp = this.chutePts(ch);
       pts.push(...cp, { x: bx, y: L.D }, { x: bx, y: L.bayTop + 4 });
       const path = makePath(pts, 10);
       this.flights.push({ t0: now, slide: 120 + path.length * 1.0, hop: 260, path, tv, ev, slot, sl, code: ev.code });
-      this.slotNext[sl] = now + LOAD_EVERY;
+      this.slotNext[ch] = now + LOAD_EVERY;
     }
     for (const f of this.flights.slice()) {
       const k = (now - f.t0) / (f.slide + f.hop);
@@ -1480,7 +1481,9 @@ export class GameView {
     const L = this.L;
     // Alle drei gleich: eine Reihe aus 4 Paletten quer zum Band; Mitte = Bandende unten
     if (slot === 'C') return this.lanePos(0, 0, k);
-    return this.lanePos(slot === 'L' ? 0 : 1, this.rowDists(slot === 'L' ? 0 : 1)[0], k);
+    const lane = slot[0] === 'L' ? 0 : 1;
+    // L2/R2: Warteplatz direkt hinter dem seitlichen Auslauf (gleiche Rutsche)
+    return this.lanePos(lane, this.rowDists(lane)[slot.length > 1 ? 1 : 0], k);
   }
   // Abstände der Palettenreihen je Spur (vom Bandende gemessen). [0] = seitlicher Auslauf,
   // so nah an der Mitte wie möglich ohne Überschneidung mit dem mittleren Auslauf;
@@ -1564,32 +1567,36 @@ export class GameView {
       if (open.length < WINDOW) open.push(b); else rest.push(b);
     }
     this._frontLane = open.length ? laneOf[open[0]] : 0;
-    // Plätze vergeben: bisherige behalten, sonst eigene Spur, dann Mitte, dann andere Seite
+    // Plätze vergeben: bisherige behalten, sonst eigene Seite, dann Mitte. Ein Band
+    // beliefert nie den Auslauf der anderen Seite (ab v0.6.3). Sind eigener und mittlerer
+    // Auslauf belegt, wartet der Block spielbar in der Reihe dahinter (L2/R2) und läuft
+    // über die Rutsche seiner Seite; sobald etwas frei wird, rückt er nach.
     const prev = this._slotOf;
     const slotOf = new Map();
     const taken = {};
     for (const b of open) {
       const sl = prev.get(b);
-      if (sl && !taken[sl]) { taken[sl] = 1; slotOf.set(b, sl); }
+      if (sl && sl.length === 1 && !taken[sl]) { taken[sl] = 1; slotOf.set(b, sl); }
     }
     for (const b of open) {
       if (slotOf.has(b)) continue;
       const own = laneOf[b] === 0 ? 'L' : 'R';
-      const sl = !taken[own] ? own : !taken.C ? 'C' : own === 'L' ? 'R' : 'L';
+      const sl = !taken[own] ? own : !taken.C ? 'C' : own + '2';
       taken[sl] = 1;
       slotOf.set(b, sl);
     }
     this._slotOf = slotOf;
     // Ausgabeplätze markieren (Fläche darunter, Rahmen später darüber)
     const busySlots = new Set(slotOf.values());
-    for (const sl of ['L', 'C', 'R']) this.drawSlotPad(ctx, sl, busySlots.has(sl), now, 'fill');
+    const pads = ['L', 'C', 'R', ...['L2', 'R2'].filter((sl) => busySlots.has(sl))];
+    for (const sl of pads) this.drawSlotPad(ctx, sl, busySlots.has(sl), now, 'fill');
     // Zielpositionen
     const target = [];
     for (const b of open) {
       const sl = slotOf.get(b);
       for (let k = 0; k < COLS; k++) target.push([b * COLS + k, this.slotPos(sl, k), true]);
     }
-    const cnt = [1, 1];
+    const cnt = [busySlots.has('L2') ? 2 : 1, busySlots.has('R2') ? 2 : 1];
     for (const b of rest) {
       const ln = laneOf[b];
       const dist = this.rowDists(ln)[cnt[ln]++];
@@ -1623,7 +1630,7 @@ export class GameView {
       const covered = code >= COVER && !isOpen;
       drawPallet(ctx, p.x, p.y, PALLET, code & 15, { angle: p.a, covered, symbols: this.symbols, scale: sc });
     }
-    for (const sl of ['L', 'C', 'R']) this.drawSlotPad(ctx, sl, busySlots.has(sl), now, 'stroke');
+    for (const sl of pads) this.drawSlotPad(ctx, sl, busySlots.has(sl), now, 'stroke');
   }
 
   // Leuchtende Bodenmarkierung eines Ausgabeplatzes

@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 11.11.2026 · Version 0.6.2
+Stand: 11.11.2026 · Version 0.6.3
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -281,6 +281,11 @@ mit Münzen kaufen.
   wer zuerst losgefahren ist; niemand fährt ineinander.
 - Die drei Ausläufe arbeiten gleichzeitig (ab v0.4.9): Jeder schickt seine Paletten der
   Reihe nach über seine eigene Rutsche, mehrere Rutschen laufen parallel.
+- Seitenregel (ab v0.6.3): Das linke Zulieferband beliefert nur den linken und den
+  mittleren Auslauf, das rechte nur den rechten und den mittleren. Kein Block fährt
+  quer über die Mitte. Sind eigener und mittlerer Auslauf belegt, wartet der dritte
+  Block derselben Seite spielbar (gelb markiert) in der Reihe direkt hinter seinem
+  Auslauf und läuft über dieselbe Rutsche; wird vorne etwas frei, rückt er nach.
 - Paletten sehen aus wie echte Holzpaletten mit farbiger Ladung. Beim Laden
   rutschen sie von ihrem eigenen Auslauf über die Rutsche auf die Rollenbahn,
   von dort über die Rutsche der Bucht und hüpfen auf ihren Platz im LKW.
