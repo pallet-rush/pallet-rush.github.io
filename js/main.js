@@ -40,8 +40,11 @@ let appH = window.innerHeight;
 const vpProbe = document.createElement('div');
 vpProbe.style.cssText = 'position:fixed;left:0;top:0;bottom:0;width:1px;visibility:hidden;pointer-events:none';
 document.documentElement.appendChild(vpProbe);
+const vpDiag = {};
 function fixViewportGap() {
-  const standalone = navigator.standalone === true || window.matchMedia?.('(display-mode: standalone)').matches;
+  // Homescreen-App: je nach iOS-Version „standalone“ oder „fullscreen“ (Manifest)
+  const mode = ['fullscreen', 'standalone', 'minimal-ui'].find((m) => window.matchMedia?.(`(display-mode: ${m})`).matches) || 'browser';
+  const standalone = navigator.standalone === true || mode !== 'browser';
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const portrait = window.innerHeight >= window.innerWidth;
   const fixedH = vpProbe.getBoundingClientRect().height || window.innerHeight;
@@ -50,6 +53,11 @@ function fixViewportGap() {
   const gap = full - fixedH;
   vgap = gap > 0 && gap < 120 ? Math.round(gap) : 0;
   appH = fixedH + vgap;
+  Object.assign(vpDiag, {
+    mode, ns: navigator.standalone, ios, w: window.innerWidth, ih: window.innerHeight, fix: Math.round(fixedH),
+    vv: Math.round(window.visualViewport?.height || 0), ch: document.documentElement.clientHeight,
+    sh: screen.height, gap: vgap,
+  });
   const st = document.documentElement.style;
   st.setProperty('--vgap', vgap + 'px');
   st.setProperty('--app-h', appH + 'px');
@@ -640,7 +648,8 @@ function showSettings(back) {
   showDialog({
     title: t('settings'),
     html: row('sound', t('sound')) + row('music', t('music')) + row('vibration', t('vibration'), t('vibrationNote')) + row('symbols', t('symbols'))
-      + `<div class="setting"><span>${t('language')}</span><div class="seg"><button data-lang="de" class="${lang === 'de' ? 'on' : ''}">DE</button><button data-lang="en" class="${lang === 'en' ? 'on' : ''}">EN</button></div></div>`,
+      + `<div class="setting"><span>${t('language')}</span><div class="seg"><button data-lang="de" class="${lang === 'de' ? 'on' : ''}">DE</button><button data-lang="en" class="${lang === 'en' ? 'on' : ''}">EN</button></div></div>`
+      + `<div class="vp-diag">v${VERSION} · ${vpDiag.mode}${vpDiag.ns ? '/ns' : ''} · ${vpDiag.w}×${vpDiag.ih} · fix ${vpDiag.fix} · vv ${vpDiag.vv} · ch ${vpDiag.ch} · scr ${vpDiag.sh} · gap ${vpDiag.gap}</div>`,
     actions: [{ label: t('back'), cls: 'primary', fn: () => (back ? back() : hideModal()) }],
   });
   const p = $('#modal-panel');
