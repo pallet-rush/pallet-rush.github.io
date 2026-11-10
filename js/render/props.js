@@ -1278,6 +1278,52 @@ export function drawChute(ctx, x, y1, y2, w) {
   ctx.restore();
 }
 
+// Rollenrutsche entlang eines Linienzugs (auch gebogen). Rollen quer zur Laufrichtung.
+export function drawChutePath(ctx, pts, w) {
+  if (pts.length < 2) return;
+  const hw = w / 2;
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'butt';
+  const line = (dx = 0, dy = 0) => { ctx.beginPath(); ctx.moveTo(pts[0].x + dx, pts[0].y + dy); for (const p of pts.slice(1)) ctx.lineTo(p.x + dx, p.y + dy); };
+  line(3, 2); ctx.lineWidth = w + 3; ctx.strokeStyle = 'rgba(40,44,80,0.16)'; ctx.stroke();
+  line(); ctx.lineWidth = w + 4; ctx.strokeStyle = '#1550c4'; ctx.stroke();
+  line(-0.8, 0); ctx.lineWidth = w + 2.4; ctx.strokeStyle = '#3b86f5'; ctx.stroke();
+  line(); ctx.lineWidth = w - 2; ctx.strokeStyle = '#20242b'; ctx.stroke();
+  // Rollen im festen Abstand entlang des Wegs
+  const step = 4.2;
+  let carry = 1;
+  const rollers = (len, col) => {
+    ctx.beginPath();
+    let rest = carry;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      const dx = b.x - a.x, dy = b.y - a.y, sl = Math.hypot(dx, dy);
+      if (!sl) continue;
+      const tx = dx / sl, ty = dy / sl, nx = -ty, ny = tx;
+      let s = rest;
+      for (; s < sl; s += step) {
+        const x = a.x + tx * s, y = a.y + ty * s;
+        ctx.moveTo(x - nx * (hw - 1.6) + tx * len, y - ny * (hw - 1.6) + ty * len);
+        ctx.lineTo(x + nx * (hw - 1.6) + tx * len, y + ny * (hw - 1.6) + ty * len);
+      }
+      rest = s - sl;
+    }
+  };
+  ctx.lineWidth = 2.5; ctx.strokeStyle = '#9aa3ae'; rollers(0); ctx.stroke();
+  ctx.lineWidth = 0.9; ctx.strokeStyle = '#6d7683'; rollers(1); ctx.stroke();
+  // Öffnung in der Bandwand: dunkler Schatten am oberen Ende
+  const a = pts[0], b = pts[1];
+  const sl = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+  const tx = (b.x - a.x) / sl, ty = (b.y - a.y) / sl;
+  const g = ctx.createLinearGradient(a.x, a.y, a.x + tx * 7, a.y + ty * 7);
+  g.addColorStop(0, 'rgba(0,0,0,0.45)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(a.x + tx * 7, a.y + ty * 7);
+  ctx.lineWidth = w + 4; ctx.strokeStyle = g; ctx.stroke();
+  ctx.restore();
+}
+
 // Horizontale Rollenbahn entlang der Rampen. phase = Laufstrecke in px.
 export function drawDockConveyor(ctx, x1, x2, y, width, phase = 0, o = {}) {
   const hw = width / 2, depth = Math.max(3, width * 0.35);

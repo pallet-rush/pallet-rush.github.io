@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 10.11.2026 · Version 0.4.6
+Stand: 10.11.2026 · Version 0.4.7
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -186,7 +186,9 @@ mit Münzen kaufen.
   Draufsicht. Von oben nach unten: Halle mit zwei Toren → gerade
   Zulieferbänder → rundes Förderband mit 3 gleich aussehenden, gelb markierten
   Ausläufen (je eine Reihe aus 4 Paletten; Mitte = Bandende unten, links/rechts
-  direkt daneben, jede Rutsche genau darunter). Palettenreihen werden so dicht wie
+  direkt daneben). Jede Rutsche tritt radial genau unter ihrem Auslauf durch eine
+  sichtbare Öffnung in der orangen Bandwand aus und biegt dann senkrecht zur
+  Rollenbahn ab. Palettenreihen werden so dicht wie
   möglich gelegt, überschneiden sich aber auch in der Kurve nie. Die Kurve ist ein
   Halbkreis (gleicher Radius überall), daher haben die Reihen dort überall den
   gleichen Abstand → je eine Rollenrutsche hinunter zur Rollenbahn (läuft von der Mitte

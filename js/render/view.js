@@ -908,10 +908,12 @@ export class GameView {
       this.pp.delete(ev.q);
       const bx = tv.dockX ?? L.bays[tv.bay];
       const slot = vehicleSlot(tv.size, tv.cell, ev.comp, ev.n);
-      const sc = this.slotPos(this._slotOf.get(Math.floor(ev.q / COLS)) || 'C', 1.5);
+      const sl = this._slotOf.get(Math.floor(ev.q / COLS)) || 'C';
+      const sc = this.slotPos(sl, 1.5);
       const pts = [{ x: st.x, y: st.y }];
       if (Math.hypot(st.x - sc.x, st.y - sc.y) > 3) pts.push({ x: sc.x, y: sc.y });
-      pts.push({ x: sc.x, y: L.D }, { x: bx, y: L.D }, { x: bx, y: L.bayTop + 4 });
+      const cp = this.chutePts(sl);
+      pts.push(...cp, { x: bx, y: L.D }, { x: bx, y: L.bayTop + 4 });
       const path = makePath(pts, 10);
       this.flights.push({ t0: now, slide: 120 + path.length * 1.0, hop: 260, path, tv, ev, slot, code: ev.code });
       this.nextLoadAt = now + LOAD_EVERY;
@@ -1253,11 +1255,6 @@ export class GameView {
     // Deko neben dem Förderband (nach der Halle: Baumkronen dürfen vor der Wand stehen)
     this.drawDecor(ctx);
     // Förderband: statischer Teil
-    // Rutschen von den drei Ausläufen hinunter zur Rollenbahn (unter dem Band beginnend)
-    for (const sl of ['L', 'C', 'R']) {
-      const c = this.slotPos(sl, 1.5);
-      P.drawChute(ctx, c.x, c.y, L.D, CHUTE_W);
-    }
     for (const p of this.beltPaths()) P.drawConveyor(ctx, p, BELT_W, 0, { layer: 'base', color: '#ff8a00' });
     // Rampenwand und Buchten
     P.drawDockWall(ctx, 14, L.wallY, FW - 28, 10, { bumpersAt: L.bays.flatMap((x) => [x - 16, x + 16]) });
@@ -1413,6 +1410,9 @@ export class GameView {
     const ph = this.beltPhase;
     for (const p of paths) P.drawConveyor(ctx, p, BELT_W, ph, { layer: 'belt', color: '#ff8a00' });
     const L = this.L;
+    // Rutschen der drei Ausläufe: treten radial durch eine Öffnung in der Bandwand aus
+    // und biegen dann senkrecht zur Rollenbahn ab (über dem Band gezeichnet = Öffnung)
+    for (const sl of ['L', 'C', 'R']) P.drawChutePath(ctx, this.chutePts(sl), CHUTE_W);
     // Rollenbahn läuft von der Station aus nach außen: links nach links, rechts nach rechts
     P.drawDockConveyor(ctx, 22, L.S.x, L.D, 14, -this.dockPhase, { layer: 'belt' });
     P.drawDockConveyor(ctx, L.S.x, FW - 22, L.D, 14, this.dockPhase, { layer: 'belt' });
@@ -1449,6 +1449,29 @@ export class GameView {
     }
     this._rd[lane] = out;
     return out;
+  }
+  // Weg der Rutsche eines Auslaufs: von innerhalb der Bandwand radial nach außen,
+  // dann im Bogen senkrecht hinunter zur Rollenbahn.
+  chutePts(sl) {
+    if (this._cpKey !== this.L) { this._cpKey = this.L; this._cp = {}; }
+    if (this._cp[sl]) return this._cp[sl];
+    const L = this.L, { cx, cy } = L.ell;
+    const c = this.slotPos(sl, 1.5);
+    const R = Math.hypot(c.x - cx, c.y - cy) || 1;
+    const ux = (c.x - cx) / R, uy = (c.y - cy) / R;
+    const hw = BELT_W / 2;
+    const at = (r) => ({ x: cx + ux * r, y: cy + uy * r });
+    const p0 = at(R + hw - 7), p1 = at(R + hw + 5);
+    const q = { x: p1.x + ux * 11, y: p1.y + uy * 11 };
+    const e = { x: q.x, y: q.y + 11 };
+    const pts = [p0, p1];
+    for (let i = 1; i <= 10; i++) {
+      const t = i / 10, m = 1 - t;
+      pts.push({ x: m * m * p1.x + 2 * m * t * q.x + t * t * e.x, y: m * m * p1.y + 2 * m * t * q.y + t * t * e.y });
+    }
+    pts.push({ x: e.x, y: L.D });
+    this._cp[sl] = pts;
+    return pts;
   }
   lanePos(lane, dist, k) {
     const ln = this.L.lanes[lane];
