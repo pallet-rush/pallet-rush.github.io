@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 10.11.2026 · Version 0.4.2
+Stand: 10.11.2026 · Version 0.4.3
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -260,6 +260,10 @@ umschaltbar.
 - Homescreen-App im Modus `standalone` (ab v0.4.2). `fullscreen` ließ unter iOS 26
   unten einen Streifen in Höhe der Statusleiste (62 px): Die Webansicht war nur
   894 statt 956 px hoch, CSS kann darunter nicht zeichnen.
+- Ab v0.4.3: Statusleiste `black` (nicht durchscheinend). iOS 26 gibt der App
+  ohnehin nur Bildschirm minus Statusleiste; so liegt die Ansicht darunter und
+  reicht bis ganz unten. Kein Auffüllen per `screen.height` mehr (rutschte ins
+  Unsichtbare).
 - Auto-Update (ab v0.4.1): beim Start, bei Rückkehr in die App und alle 5 Min.
   wird `js/version.js` online geprüft; ist sie neuer, lädt die App neu – nur im
   Menü (nie im Level, Duell oder Dialog), höchstens einmal pro Version und Sitzung.

@@ -50,7 +50,9 @@ function fixViewportGap() {
   const portrait = window.innerHeight >= window.innerWidth;
   const fixedH = vpProbe.getBoundingClientRect().height || window.innerHeight;
   let full = Math.max(fixedH, window.innerHeight);
-  if (standalone && ios && portrait) full = Math.max(full, Math.max(screen.height, screen.width));
+  // Früher: Lücke bis zur Bildschirmhöhe aufgefüllt. Unter iOS 26 ist die Webansicht
+  // selbst zu kurz – darunter wird nicht gezeichnet, Boni/Fußzeile rutschten ins Unsichtbare.
+  void standalone; void ios; void portrait;
   const gap = full - fixedH;
   vgap = gap > 0 && gap < 120 ? Math.round(gap) : 0;
   appH = fixedH + vgap;
