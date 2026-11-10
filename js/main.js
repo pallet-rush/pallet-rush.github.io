@@ -313,7 +313,7 @@ function handleTap(id) {
     return;
   }
   if (res.reason === 'blocked') {
-    view.nudge(id, res.blocker);
+    view.nudge(id, res.blocker, true);
     sfx.blocked();
     vibrate(15);
   } else if (res.reason === 'locked') {

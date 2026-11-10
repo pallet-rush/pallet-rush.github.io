@@ -187,6 +187,7 @@ export class GameView {
     this.qMoving = false;
     this.frameDt = 16;
     this.nextLoadAt = 0;
+    this.slotNext = {}; // je Auslauf: frühester Zeitpunkt für die nächste Palette
     this.beltPhase = 0;
     this.dockPhase = 0;
     this.popAt = -1e9;
@@ -751,12 +752,30 @@ export class GameView {
     if (best >= 0) this.hooks.onTap?.(best);
   }
 
-  nudge(id, blocker) {
+  nudge(id, blocker, drive = false) {
     const now = performance.now();
     const tv = this.tvs[id];
+    const bk = blocker >= 0 ? this.tvs[blocker] : null;
+    // Zugeparkt: bis an den blockierenden LKW vorfahren, kurz anstoßen, zurück.
+    // So sieht man sofort, wer im Weg steht.
+    if (drive && tv && tv.state === 'lot' && bk && bk.state === 'lot') {
+      const body = this.bodyOf(bk);
+      const c = Math.cos(tv.a), s = Math.sin(tv.a);
+      const max = (tv.cell || this.L.cd) * 40;
+      let d = 0;
+      while (d < max && !overlap(this.bodyOf(tv, tv.x + c * (d + 0.5), tv.y + s * (d + 0.5)), body)) d += 0.5;
+      if (d < max) {
+        const fwd = clamp(d / 0.3, 110, 520);
+        tv.bump = { t0: now, d, fwd, back: Math.max(160, fwd * 0.8) };
+        tv.nudge = null;
+        bk.flash = now + fwd;
+        this.after(fwd, () => this.shake(performance.now(), 2.5));
+        return;
+      }
+    }
     if (tv) tv.nudge = now;
     this.shake(now, 3);
-    if (blocker >= 0 && this.tvs[blocker]) this.tvs[blocker].flash = now;
+    if (bk) bk.flash = now;
     if (blocker === -1) this.rampFlash = now;
   }
 
@@ -905,28 +924,35 @@ export class GameView {
     }
   }
 
-  // Paletten: in Reihenfolge, nur zu geparkten LKWs
+  // Paletten: nur zu geparkten LKWs. Die drei Ausläufe arbeiten gleichzeitig,
+  // jeder Auslauf schickt seine Paletten der Reihe nach über seine Rutsche.
   updateLoads(now) {
     const L = this.L;
-    while (this.loads.length && now >= this.nextLoadAt) {
-      const ev = this.loads[0];
+    const busy = new Set();
+    for (let i = 0; i < this.loads.length;) {
+      const ev = this.loads[i];
       const tv = this.tvs[ev.id];
-      if (tv.state !== 'dock' || now - tv.dockAt < 160) break;
-      this.loads.shift();
+      const sl = this._slotOf.get(Math.floor(ev.q / COLS));
+      if (!sl || busy.has(sl) || now < (this.slotNext[sl] || 0) || tv.state !== 'dock' || now - tv.dockAt < 160) {
+        if (sl) busy.add(sl); // Reihenfolge je Auslauf wahren
+        i++;
+        continue;
+      }
+      busy.add(sl);
+      this.loads.splice(i, 1);
       const st = this.pp.get(ev.q) || { x: L.S.x, y: L.S.y };
       this.vGone.add(ev.q);
       this.pp.delete(ev.q);
       const bx = tv.dockX ?? L.bays[tv.bay];
       const slot = vehicleSlot(tv.size, tv.cell, ev.comp, ev.n);
-      const sl = this._slotOf.get(Math.floor(ev.q / COLS)) || 'C';
       const sc = this.slotPos(sl, 1.5);
       const pts = [{ x: st.x, y: st.y }];
       if (Math.hypot(st.x - sc.x, st.y - sc.y) > 3) pts.push({ x: sc.x, y: sc.y });
       const cp = this.chutePts(sl);
       pts.push(...cp, { x: bx, y: L.D }, { x: bx, y: L.bayTop + 4 });
       const path = makePath(pts, 10);
-      this.flights.push({ t0: now, slide: 120 + path.length * 1.0, hop: 260, path, tv, ev, slot, code: ev.code });
-      this.nextLoadAt = now + LOAD_EVERY;
+      this.flights.push({ t0: now, slide: 120 + path.length * 1.0, hop: 260, path, tv, ev, slot, sl, code: ev.code });
+      this.slotNext[sl] = now + LOAD_EVERY;
     }
     for (const f of this.flights.slice()) {
       const k = (now - f.t0) / (f.slide + f.hop);
@@ -1771,7 +1797,17 @@ export class GameView {
       x += Math.cos(tv.a) * off;
       y += Math.sin(tv.a) * off;
     }
-    const flash = clamp(1 - (now - tv.flash) / 600, 0, 1);
+    if (tv.bump && tv.state === 'lot') {
+      const b = tv.bump, k = now - b.t0, hold = 110;
+      let off;
+      if (k < b.fwd) off = b.d * ease(k / b.fwd);
+      else if (k < b.fwd + hold) off = b.d - Math.sin((k - b.fwd) / hold * Math.PI) * 1.2;
+      else if (k < b.fwd + hold + b.back) off = b.d * (1 - ease((k - b.fwd - hold) / b.back));
+      else { off = 0; tv.bump = null; }
+      x += Math.cos(tv.a) * off;
+      y += Math.sin(tv.a) * off;
+    } else if (tv.bump) tv.bump = null;
+    const flash = now < tv.flash ? 0 : clamp(1 - (now - tv.flash) / 600, 0, 1);
     const sq = clamp(1 - (now - tv.squash) / 260, 0, 1);
     const hl = this.select === 'truck' && inLot ? 1 : 0;
     const comps = t.comps;
