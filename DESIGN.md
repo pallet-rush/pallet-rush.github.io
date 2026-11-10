@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 10.11.2026 · Version 0.4.8
+Stand: 10.11.2026 · Version 0.4.9
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -28,7 +28,7 @@ Inhalte übernommen.
 
 | Regel | Festlegung |
 |---|---|
-| Antippen | Der LKW fährt vorwärts in Pfeilrichtung (Fahrerhaus = vorne) aus dem Hof. Ist der Weg versperrt, ruckelt er kurz und bleibt stehen. |
+| Antippen | Der LKW fährt vorwärts in Pfeilrichtung (Fahrerhaus = vorne) aus dem Hof. Ist der Weg durch einen LKW versperrt, fährt er bis an diesen heran, stößt kurz an (der Blocker blinkt) und setzt zurück – so sieht man sofort, wer im Weg steht (ab v0.4.9). Bei anderen Hindernissen ruckelt er nur kurz. |
 | Rampe nötig | Ein LKW fährt nur los, wenn eine Rampe frei ist. Sonst kommt der Hinweis „Keine Rampe frei“. |
 | Zuglimit | Keins. |
 | Beladen | Die Schlange besteht aus Blöcken zu 4 gleichfarbigen Paletten. Die vordersten 3 noch nicht verladenen Blöcke liegen an den Ausgabeplätzen (links, Mitte, rechts) und werden jeweils als ganzer Block in einen geparkten LKW gleicher Farbe geladen (vorderster Block zuerst). Passt keiner davon, wartet die Schlange. Bei zwei passenden LKWs bekommt der den Block, dem am wenigsten bis „voll“ fehlt. Ein frei gewordener Ausgabeplatz wird mit dem nächsten Block der Schlange gefüllt. |
@@ -201,6 +201,8 @@ mit Münzen kaufen.
 - Verkehr: LKWs fahren vorwärts aus dem Stau, ordnen sich auf der Ringstraße
   ein, setzen rückwärts in ihre Bucht und fahren nach rechts ab. Vorfahrt hat,
   wer zuerst losgefahren ist; niemand fährt ineinander.
+- Die drei Ausläufe arbeiten gleichzeitig (ab v0.4.9): Jeder schickt seine Paletten der
+  Reihe nach über seine eigene Rutsche, mehrere Rutschen laufen parallel.
 - Paletten sehen aus wie echte Holzpaletten mit farbiger Ladung. Beim Laden
   rutschen sie von ihrem eigenen Auslauf über die Rutsche auf die Rollenbahn,
   von dort über die Rutsche der Bucht und hüpfen auf ihren Platz im LKW.
