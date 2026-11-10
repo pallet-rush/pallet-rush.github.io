@@ -242,7 +242,8 @@ export class GameView {
     L.hall = { y: T - 4, h: 50 };
     const gateY = T + 42;
     L.gateY = gateY;
-    L.ell = { cx: FW / 2, cy: T + 112, rx: 85, ry: 58 };
+    // Kreisbogen (rx = ry): gleiche Krümmung überall → gleiche Abstände der Reihen in der Kurve
+    L.ell = { cx: FW / 2, cy: T + 85, rx: 85, ry: 85 };
     const { cx, cy, rx, ry } = L.ell;
     L.M = { x: cx, y: cy + ry };
     L.S = { x: cx, y: cy + ry + 20 };
@@ -1440,7 +1441,7 @@ export class GameView {
     let prev = row(d);
     while (d < ln.length - 6) {
       let nd = d + ROW_GAP - 2;
-      while (nd < ln.length && minD(row(nd), prev) < PALLET + 1.4) nd += 0.5;
+      while (nd < ln.length && minD(row(nd), prev) < PALLET + 1.4) nd += 0.25;
       if (nd >= ln.length - 6) break;
       out.push(nd);
       prev = row(nd);
