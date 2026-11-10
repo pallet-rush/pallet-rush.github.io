@@ -1244,6 +1244,40 @@ export function drawLoadingStation(ctx, x, y, s, t = 0, ok = true) {
   ctx.restore();
 }
 
+// Senkrechte Rollenrutsche (Auslauf → Rollenbahn, Rollenbahn → Bucht).
+export function drawChute(ctx, x, y1, y2, w) {
+  if (y2 - y1 < 2) return;
+  const hw = w / 2, h = y2 - y1;
+  ctx.save();
+  // weicher Schatten rechts
+  ctx.fillStyle = 'rgba(40,44,80,0.16)';
+  ctx.fillRect(x - hw + 3, y1 + 2, w + 1, h);
+  // Seitenwangen (blau wie die Rollenbahn)
+  const g = ctx.createLinearGradient(x - hw - 2, 0, x + hw + 2, 0);
+  g.addColorStop(0, '#5d9cff');
+  g.addColorStop(0.5, '#2f7bf0');
+  g.addColorStop(1, '#1550c4');
+  ctx.fillStyle = g;
+  ctx.fillRect(x - hw - 2, y1, w + 4, h);
+  // Rollenbett
+  ctx.fillStyle = '#20242b';
+  ctx.fillRect(x - hw + 1, y1, w - 2, h);
+  ctx.beginPath();
+  for (let y = y1 + 1; y < y2 - 1; y += 4.2) ctx.rect(x - hw + 1.6, y, w - 3.2, 2.5);
+  ctx.fillStyle = '#9aa3ae';
+  ctx.fill();
+  ctx.beginPath();
+  for (let y = y1 + 1; y < y2 - 1; y += 4.2) ctx.rect(x - hw + 1.6, y + 1.5, w - 3.2, 1);
+  ctx.fillStyle = '#6d7683';
+  ctx.fill();
+  // Lichtkanten
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillRect(x - hw - 2, y1, 0.9, h);
+  ctx.fillStyle = 'rgba(0,10,40,0.35)';
+  ctx.fillRect(x + hw + 1.2, y1, 0.8, h);
+  ctx.restore();
+}
+
 // Horizontale Rollenbahn entlang der Rampen. phase = Laufstrecke in px.
 export function drawDockConveyor(ctx, x1, x2, y, width, phase = 0, o = {}) {
   const hw = width / 2, depth = Math.max(3, width * 0.35);

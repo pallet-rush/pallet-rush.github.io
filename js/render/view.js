@@ -24,7 +24,7 @@ import { sfx, vibrate } from '../audio.js';
 
 const FW = 390; // Breite der Fabrik (Hochformat: ganze Szene)
 const LOT_W = 372; // Querformat: Breite des Hofs rechts neben der Fabrik
-const LAND_H = 392; // Querformat: Höhe der Szene (Halle bis Rampenstraße)
+const LAND_H = 434; // Querformat: Höhe der Szene (Halle bis Rampenstraße)
 const DIR_ANGLE = { R: 0, D: Math.PI / 2, L: Math.PI, U: -Math.PI / 2 };
 const LOT_K = 0.77;      // Maßstab der LKWs im Hof relativ zum Raster (Abstand zueinander)
 const ROAD_W = 30;
@@ -34,7 +34,8 @@ const PALLET = 12; // Palettengröße auf den Bändern
 const GAP = 18; // (alt) Abstand der Paletten auf einer Spur
 const COLS = 4; // Paletten nebeneinander auf einem Band (= ein Block)
 const WINDOW = 3; // Ausgabeplätze: links, Mitte, rechts
-const SLOT_D = 46; // Abstand der seitlichen Ausgabeplätze vom Bandende
+const SLOT_D = 42; // Abstand der seitlichen Ausgabeplätze vom Bandende (Mitte = Bandende)
+const CHUTE_W = 16; // Breite der Rollenrutschen (Auslauf → Rollenbahn → Bucht)
 const COL_GAP = 13.5; // Querabstand der Spalten
 const ROW_GAP = 15; // Abstand der Reihen
 const BELT_W = 60; // Breite der Zulieferbänder
@@ -245,9 +246,9 @@ export class GameView {
     const { cx, cy, rx, ry } = L.ell;
     L.M = { x: cx, y: cy + ry };
     L.S = { x: cx, y: cy + ry + 20 };
-    L.D = L.S.y + 24; // Rollenbahn
-    L.wallY = L.D + 8;
-    L.bayTop = L.D + 18;
+    L.D = L.M.y + 76; // Rollenbahn (darüber: Rutschen von den drei Ausläufen)
+    L.wallY = L.D + 18;
+    L.bayTop = L.D + 28;
     L.bayH = 116;
     L.RY = L.bayTop + L.bayH + 17; // Mittellinie obere Ringstraße
     if (land) {
@@ -271,7 +272,6 @@ export class GameView {
       const pts = [{ x, y: gateY - 10 }, { x, y: cy }];
       const arc = side === 0 ? P.arcPoints(cx, cy, rx, ry, Math.PI, Math.PI / 2, 28) : P.arcPoints(cx, cy, rx, ry, 0, Math.PI / 2, 28);
       for (const p of arc.slice(1)) pts.push(p);
-      pts.push(L.S);
       return makePath(pts, 4);
     });
     // Rampen / Buchten
@@ -907,9 +907,10 @@ export class GameView {
       this.pp.delete(ev.q);
       const bx = tv.dockX ?? L.bays[tv.bay];
       const slot = vehicleSlot(tv.size, tv.cell, ev.comp, ev.n);
+      const sc = this.slotPos(this._slotOf.get(Math.floor(ev.q / COLS)) || 'C', 1.5);
       const pts = [{ x: st.x, y: st.y }];
-      if (Math.hypot(st.x - L.S.x, st.y - L.S.y) > 3) pts.push({ x: L.S.x, y: L.S.y });
-      pts.push({ x: L.S.x, y: L.D }, { x: bx, y: L.D });
+      if (Math.hypot(st.x - sc.x, st.y - sc.y) > 3) pts.push({ x: sc.x, y: sc.y });
+      pts.push({ x: sc.x, y: L.D }, { x: bx, y: L.D }, { x: bx, y: L.bayTop + 4 });
       const path = makePath(pts, 10);
       this.flights.push({ t0: now, slide: 120 + path.length * 1.0, hop: 260, path, tv, ev, slot, code: ev.code });
       this.nextLoadAt = now + LOAD_EVERY;
@@ -1251,10 +1252,17 @@ export class GameView {
     // Deko neben dem Förderband (nach der Halle: Baumkronen dürfen vor der Wand stehen)
     this.drawDecor(ctx);
     // Förderband: statischer Teil
+    // Rutschen von den drei Ausläufen hinunter zur Rollenbahn (unter dem Band beginnend)
+    for (const sl of ['L', 'C', 'R']) {
+      const c = this.slotPos(sl, 1.5);
+      P.drawChute(ctx, c.x, c.y, L.D, CHUTE_W);
+    }
     for (const p of this.beltPaths()) P.drawConveyor(ctx, p, BELT_W, 0, { layer: 'base', color: '#ff8a00' });
     // Rampenwand und Buchten
     P.drawDockWall(ctx, 14, L.wallY, FW - 28, 10, { bumpersAt: L.bays.flatMap((x) => [x - 16, x + 16]) });
     L.bays.forEach((x, i) => P.drawDockBay(ctx, x, L.bayTop, L.slotW, L.bayH, { index: i, extra: i >= 4, floor: true }));
+    // Rutschen von der Rollenbahn in jede Bucht
+    for (const x of L.bays) P.drawChute(ctx, x, L.D, L.bayTop + 10, CHUTE_W - 2);
     // Rollenbahn: statischer Rahmen (Rollen laufen pro Frame)
     P.drawDockConveyor(ctx, 22, FW - 22, L.D, 14, 0, { layer: 'base' });
     // Einheitlich knallige Farben: Szene einmalig kräftiger und klarer machen
@@ -1284,8 +1292,6 @@ export class GameView {
       // breites U-Band unten (zur Station)
       mk(P.arcPoints(cx, cy, rx, ry, Math.PI, Math.PI / 2, 28)),
       mk(P.arcPoints(cx, cy, rx, ry, 0, Math.PI / 2, 28)),
-      // Weiche → Station
-      mk([L.M, { x: L.S.x, y: L.S.y }]),
     ];
     this._beltKey = this.L;
     this._belts = paths;
@@ -1409,25 +1415,13 @@ export class GameView {
     // Rollenbahn läuft von der Station aus nach außen: links nach links, rechts nach rechts
     P.drawDockConveyor(ctx, 22, L.S.x, L.D, 14, -this.dockPhase, { layer: 'belt' });
     P.drawDockConveyor(ctx, L.S.x, FW - 22, L.D, 14, this.dockPhase, { layer: 'belt' });
-    const g = this.game || this.demo;
-    // Weiche zeigt auf die Spur des vordersten Blocks
-    const want = this._frontLane === 1 ? 1 : -1;
-    this.switchSide = lerp(this.switchSide ?? want, want, 0.2);
-    P.drawMergeSwitch(ctx, L.M.x, L.M.y, 18, this.switchSide);
-    let ok = true;
-    if (g && g.status === 'playing' && !this.loads.length && !this.flights.length) {
-      ok = g.front() < 0 || g.canLoadNow();
-    }
-    P.drawLoadingStation(ctx, L.S.x, L.S.y, 34, now / 1000, ok);
   }
 
   // Lage der drei Ausgabeplätze: L/R = vorderste Reihe der linken/rechten Spur, C = 2×2 an der Station
   slotPos(slot, k) {
     const L = this.L;
-    if (slot === 'C') {
-      const g2 = 6.4;
-      return { x: L.S.x + (k % 2 ? g2 : -g2), y: L.S.y - 8 + (k < 2 ? -g2 : g2), a: Math.PI / 2 };
-    }
+    // Alle drei gleich: eine Reihe aus 4 Paletten quer zum Band; Mitte = Bandende unten
+    if (slot === 'C') return this.lanePos(0, 0, k);
     return this.lanePos(slot === 'L' ? 0 : 1, SLOT_D, k);
   }
   lanePos(lane, dist, k) {
@@ -1528,13 +1522,8 @@ export class GameView {
 
   // Leuchtende Bodenmarkierung eines Ausgabeplatzes
   drawSlotPad(ctx, sl, busy, now, part) {
-    let cx, cy, a, w, h;
-    if (sl === 'C') {
-      cx = this.L.S.x; cy = this.L.S.y - 8; a = 0; w = 30; h = 30;
-    } else {
-      const c = this.lanePos(sl === 'L' ? 0 : 1, SLOT_D, 1.5);
-      cx = c.x; cy = c.y; a = c.a + Math.PI / 2; w = COLS * COL_GAP + 5; h = 18;
-    }
+    const c = this.slotPos(sl, 1.5);
+    const cx = c.x, cy = c.y, a = c.a + Math.PI / 2, w = COLS * COL_GAP + 5, h = 18;
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(a);

@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 10.11.2026 · Version 0.4.3
+Stand: 10.11.2026 · Version 0.4.4
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -33,7 +33,7 @@ Inhalte übernommen.
 | Zuglimit | Keins. |
 | Beladen | Die Schlange besteht aus Blöcken zu 4 gleichfarbigen Paletten. Die vordersten 3 noch nicht verladenen Blöcke liegen an den Ausgabeplätzen (links, Mitte, rechts) und werden jeweils als ganzer Block in einen geparkten LKW gleicher Farbe geladen (vorderster Block zuerst). Passt keiner davon, wartet die Schlange. Bei zwei passenden LKWs bekommt der den Block, dem am wenigsten bis „voll“ fehlt. Ein frei gewordener Ausgabeplatz wird mit dem nächsten Block der Schlange gefüllt. |
 | Paletten-Blöcke | Paletten kommen immer in Blöcken zu 4 gleichfarbigen Paletten, die nebeneinander auf dem breiten Band fahren. Alle Ladekapazitäten (8 / 24 / 40) sind Vielfache von 4. Farbgruppen bleiben auf einer Bandseite, die Gruppen wechseln sich links/rechts ab. |
-| Schlange | Feste Reihenfolge. Sie kommt aus zwei Hallentoren über gerade Zulieferbänder, die in das runde Förderband münden; an der Weiche laufen beide Spuren abwechselnd zusammen. Man sieht etwa 20 Paletten im Voraus. |
+| Schlange | Feste Reihenfolge. Sie kommt aus zwei Hallentoren über gerade Zulieferbänder, die in das runde Förderband münden; beide Spuren treffen sich unten am mittleren Auslauf (seit v0.4.4 ohne Weiche und Ladestation). Man sieht etwa 20 Paletten im Voraus. |
 | Abfahrt | Ein voller LKW fährt sofort ab, die Rampe ist frei. |
 | Gewonnen | Alle LKWs sind voll beladen abgefahren. |
 | Verloren | Alle Rampen sind belegt und keiner der 3 Blöcke an den Ausgabeplätzen passt zu einem geparkten LKW. Dann ist keine Aktion mehr möglich. |
@@ -184,16 +184,18 @@ mit Münzen kaufen.
   Lesbarkeit), aber mit eigener Grafik, eigenem Namen und eigenen Leveln.
 - Hochformat, hohe Auflösung (bis 3× Pixeldichte), farbenfrohe 3D-Optik in
   Draufsicht. Von oben nach unten: Halle mit zwei Toren → gerade
-  Zulieferbänder → rundes Förderband mit 3 gelb markierten Ausgabeplätzen →
-  Ladestation → Rollenbahn (läuft von der Station aus nach links und rechts) →
-  4 Parkbuchten → Ringstraße (Einbahn im Uhrzeigersinn) → Stau im Inneren.
+  Zulieferbänder → rundes Förderband mit 3 gleich aussehenden, gelb markierten
+  Ausläufen (je eine Reihe aus 4 Paletten; Mitte = Bandende unten, links/rechts
+  kurz davor) → je eine Rollenrutsche hinunter zur Rollenbahn (läuft von der Mitte
+  nach links und rechts) → je eine Rutsche in jede Parkbucht → Parkbuchten → Ringstraße (Einbahn im Uhrzeigersinn) → Stau im Inneren.
 - Der Stau ist ein freier, dichter Haufen ohne Rasterlinien auf hellem Beton,
   in wechselnden Formen und auch schräg.
 - Verkehr: LKWs fahren vorwärts aus dem Stau, ordnen sich auf der Ringstraße
   ein, setzen rückwärts in ihre Bucht und fahren nach rechts ab. Vorfahrt hat,
   wer zuerst losgefahren ist; niemand fährt ineinander.
 - Paletten sehen aus wie echte Holzpaletten mit farbiger Ladung. Beim Laden
-  gleiten sie über die Rollenbahn und hüpfen auf ihren Platz im LKW.
+  rutschen sie von ihrem eigenen Auslauf über die Rutsche auf die Rollenbahn,
+  von dort über die Rutsche der Bucht und hüpfen auf ihren Platz im LKW.
 - Transporter, LKW, Sattelzug und Anhängerzug unterscheiden sich deutlich.
 - Hauptmenü wie bei einem großen Mobile-Spiel: 3D-Logo, glänzende Knöpfe; im
   Hintergrund spielt sich ein Level von selbst.
