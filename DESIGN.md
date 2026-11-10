@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 10.11.2026 · Version 0.3.0
+Stand: 10.11.2026 · Version 0.3.1
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -104,6 +104,11 @@ mit Münzen kaufen.
   Sterne pro Welt stehen auf dem Welt-Banner der Levelauswahl (max. 30).
 - **Tagesbonus**: 7-Tage-Serie 30 / 40 / 50 / 60 / 80 / 100 / 150 Münzen.
   Ein ausgelassener Tag setzt die Serie zurück.
+- **Schwere Level**: Level 10 und jedes x6-Level ab 16 sind „Schwer“ (Münzen ×1,5),
+  jedes 10. Level ab 20 ist „Sehr schwer“ (×2). Kennzeichnung im Start-Banner,
+  im HUD und in der Levelauswahl.
+- **Weiterspielen** nach „Alle Rampen belegt“: +1 Rampe aus dem Bonus-Vorrat
+  (gratis) oder für 100–250 Münzen (steigt mit dem Level).
 - Keine Werbung, keine Echtgeld-Käufe, keine Leben, keine Wartezeiten.
 
 ## 8. Fairness-Garantien (Level-Pipeline)
@@ -167,6 +172,11 @@ mit Münzen kaufen.
 - Farbsymbole (● ▲ ■ ★ …) für Farbenblinde lassen sich in den Einstellungen
   einschalten (Standard: aus).
 
+- Tutorial: In Level 1–2 zeigt eine animierte Hand auf den nächsten LKW der
+  Referenzlösung, bis das Level einmal geschafft ist.
+- Ladebildschirm mit Logo, Level-Start-Banner, Fortschrittsleiste im HUD,
+  Ladezähler („12/24“) unter jedem angedockten LKW, Rampenampeln.
+
 ## 10. Audio und Haptik
 
 - Soundeffekte und Musik werden per Web Audio erzeugt, ohne Audiodateien und
@@ -196,5 +206,7 @@ umschaltbar.
   wird nie überschrieben, sondern gesichert.
 - Versionsnummer in `js/version.js`, sichtbar im Hauptmenü.
 - Credit „created by Nino Bernhardt“ im Hauptmenü.
+- Offline spielbar: Service Worker `sw.js` (Code network-first, Bilder
+  cache-first, Cache-Version = `VERSION`; auf localhost nur mit `?sw`).
 - Vorbereitet für einen späteren Store-Release (PWA-Manifest; später z. B.
   mit Capacitor verpackbar).

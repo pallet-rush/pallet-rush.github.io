@@ -41,7 +41,7 @@ const view = new GameView($('#game'), {
   onWon: handleWon,
   onLost: handleLost,
   onRampsChanged: updateWarn,
-  onDepart: updateProgress,
+  onDepart: () => { updateProgress(); updateGuide(); },
 });
 
 let game = null;
@@ -99,6 +99,7 @@ function startLevel(n) {
   refreshBoosters();
   measureInsets();
   view.setGame(game, { symbols: save.settings.symbols });
+  updateGuide();
   warnOn = false;
   $('#warn').classList.add('hidden');
   save.stats.played++;
@@ -220,6 +221,7 @@ function handleTap(id) {
   const res = game.tap(id);
   if (res.ok) {
     if (hintShown) { hideToast(); hintShown = false; }
+    updateGuide();
     hideBanner();
     sfx.tap();
     view.play(res.events);
@@ -239,6 +241,21 @@ function handleTap(id) {
     view.nudge(id, -1);
     sfx.noRamp();
     toast(t('noRamp'));
+  }
+}
+
+// Tutorial-Hand in den ersten Leveln: zeigt auf den nächsten LKW der Referenzlösung
+const GUIDE_LEVELS = 2;
+function updateGuide() {
+  view.guideId = null;
+  if (!game || levelNo > GUIDE_LEVELS || game.status !== 'playing') return;
+  if (save.levels[levelNo]?.won) return;
+  const sol = LEVELS[levelNo - 1].sol || [];
+  for (const id of sol) {
+    const tr = game.trucks[id];
+    if (!tr || tr.state !== 0) continue; // schon weg (nicht mehr im Hof)
+    if (game.canExit(tr)) view.guideId = id;
+    return;
   }
 }
 
@@ -349,9 +366,10 @@ function handleLost(reason) {
     const def = BOOSTERS[0];
     const st = save.boosters.ramp;
     const free = st.count > 0;
-    const afford = free || save.coins >= def.price;
+    const price = continuePrice();
+    const afford = free || save.coins >= price;
     actions.push({
-      html: `<span class="cont-ico"><img src="assets/boosters/ramp.png" alt=""></span><span class="cont-label">${t('continueRamp')}</span><span class="cont-price">${free ? `${t('continueFree')}` : `<span class="coin small"></span>${def.price}`}</span>`,
+      html: `<span class="cont-ico"><img src="assets/boosters/ramp.png" alt=""></span><span class="cont-label">${t('continueRamp')}</span><span class="cont-price">${free ? `${t('continueFree')}` : `<span class="coin small"></span>${price}`}</span>`,
       cls: 'primary continue' + (afford ? ' pulse' : ' poor'),
       fn: () => continueWithRamp(def, free),
     });
@@ -366,12 +384,18 @@ function handleLost(reason) {
   });
 }
 
+// Weiterspielen wird mit den Leveln teurer (früh günstig, später wie die Extra-Rampe)
+function continuePrice() {
+  return Math.min(BOOSTERS[0].price, 100 + 10 * Math.floor((levelNo - 1) / 7));
+}
+
 // Niederlage aufheben: Extra-Rampe einsetzen (Bonus-Vorrat oder Münzen) und weiterspielen
 function continueWithRamp(def, free) {
   if (!game || game.extraUsed) return;
   if (!free) {
-    if (save.coins < def.price) { toast(`${t('notEnough')} (${def.price})`); sfx.noRamp(); return; }
-    save.coins -= def.price;
+    const price = continuePrice();
+    if (save.coins < price) { toast(`${t('notEnough')} (${price})`); sfx.noRamp(); return; }
+    save.coins -= price;
     save.boosters.ramp.count++;
     updateCoins();
     sfx.coin();

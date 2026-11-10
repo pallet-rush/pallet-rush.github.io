@@ -959,6 +959,58 @@ export class GameView {
     this.drawCranes(ctx, now);
     this.drawDockPills(ctx, now);
     this.drawFx(ctx, now);
+    this.drawGuide(ctx, now);
+  }
+
+  // Tutorial-Hand: tippt animiert auf den empfohlenen LKW (guideId)
+  drawGuide(ctx, now) {
+    if (this.guideId == null) return;
+    const tv = this.tvs.find((v) => v.id === this.guideId);
+    if (!tv || tv.state !== 'lot') return;
+    const t = (now % 1300) / 1300;
+    const press = t < 0.35 ? t / 0.35 : t < 0.5 ? 1 - (t - 0.35) / 0.15 : 0;
+    const x = tv.x, y = tv.y;
+    ctx.save();
+    // Tipp-Ring
+    if (t > 0.3 && t < 0.9) {
+      const k = (t - 0.3) / 0.6;
+      ctx.globalAlpha = (1 - k) * 0.9;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3 * (1 - k) + 1;
+      ctx.beginPath();
+      ctx.arc(x, y, 6 + k * 22, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    // Hand (Zeigefinger zeigt nach oben links auf den LKW)
+    const hx = x + 8 - press * 5, hy = y + 10 - press * 5, sc = 1.35 - press * 0.1;
+    ctx.translate(hx, hy);
+    ctx.rotate(-0.45);
+    ctx.scale(sc, sc);
+    ctx.shadowColor = 'rgba(10,30,80,0.35)';
+    ctx.shadowBlur = 6; ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 3;
+    const rr = (x0, y0, w, h, r) => { ctx.beginPath(); ctx.roundRect(x0, y0, w, h, r); };
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#1b2b55';
+    ctx.lineWidth = 2;
+    // Zeigefinger
+    rr(-4, -2, 8, 22, 4); ctx.fill();
+    // Handfläche mit eingeklappten Fingern
+    rr(-6, 14, 21, 20, 7); ctx.fill();
+    ctx.shadowColor = 'transparent';
+    rr(-4, -2, 8, 22, 4); ctx.stroke();
+    rr(-6, 14, 21, 20, 7); ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(-2.5, 13, 5, 4);
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(4, 19); ctx.lineTo(4, 24);
+    ctx.moveTo(9, 19); ctx.lineTo(9, 24);
+    ctx.stroke();
+    // Daumen
+    ctx.lineWidth = 2;
+    rr(-11, 20, 9, 7, 3.5); ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.stroke();
+    ctx.restore();
   }
 
   // Wolkenschatten: wenige große, weiche Flecken ziehen langsam über die Szene
