@@ -31,20 +31,36 @@ const DEV = new URLSearchParams(location.search).has('dev');
 
 const $ = (s) => document.querySelector(s);
 
-// iOS-Homescreen-App: Fensterhöhe ist dort teils um die Statusleiste zu klein.
-// Die Lücke zum echten Bildschirm messen und per CSS-Variable ausgleichen.
+// iOS-Homescreen-App: Dort ist der Bereich für feste Elemente (position: fixed,
+// 100dvh) teils um die Statusleiste kürzer als der Bildschirm; unten bleibt dann
+// ein Streifen. Wir messen die echte Höhe eines festen Elements, vergleichen sie
+// mit Fenster- und Bildschirmhöhe und gleichen die Lücke per CSS-Variablen aus.
 let vgap = 0;
+let appH = window.innerHeight;
+const vpProbe = document.createElement('div');
+vpProbe.style.cssText = 'position:fixed;left:0;top:0;bottom:0;width:1px;visibility:hidden;pointer-events:none';
+document.documentElement.appendChild(vpProbe);
 function fixViewportGap() {
   const standalone = navigator.standalone === true || window.matchMedia?.('(display-mode: standalone)').matches;
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const portrait = window.innerHeight >= window.innerWidth;
-  const gap = standalone && ios && portrait ? Math.max(screen.height, screen.width) - window.innerHeight : 0;
-  vgap = gap > 0 && gap < 100 ? gap : 0;
-  document.documentElement.style.setProperty('--vgap', vgap + 'px');
+  const fixedH = vpProbe.getBoundingClientRect().height || window.innerHeight;
+  let full = Math.max(fixedH, window.innerHeight);
+  if (standalone && ios && portrait) full = Math.max(full, Math.max(screen.height, screen.width));
+  const gap = full - fixedH;
+  vgap = gap > 0 && gap < 120 ? Math.round(gap) : 0;
+  appH = fixedH + vgap;
+  const st = document.documentElement.style;
+  st.setProperty('--vgap', vgap + 'px');
+  st.setProperty('--app-h', appH + 'px');
 }
 fixViewportGap();
 window.addEventListener('resize', fixViewportGap);
-window.addEventListener('orientationchange', () => setTimeout(fixViewportGap, 300));
+const refit = () => { const old = vgap; fixViewportGap(); if (old !== vgap) { window.__prView?.resize(); if (typeof game !== 'undefined' && game) measureInsets(); } };
+window.addEventListener('orientationchange', () => setTimeout(refit, 300));
+window.addEventListener('pageshow', () => setTimeout(refit, 50));
+setTimeout(refit, 600);
+setTimeout(refit, 2000);
 
 let save = loadSave();
 setLang(save.settings.lang || detectLang());
@@ -58,6 +74,7 @@ const view = new GameView($('#game'), {
   onRampsChanged: updateWarn,
   onDepart: () => { updateProgress(); updateGuide(); },
 });
+window.__prView = view;
 
 let game = null;
 let levelNo = 1;
@@ -207,7 +224,7 @@ function showIntros(n) {
 function measureInsets() {
   const hud = $('#hud').getBoundingClientRect();
   const b = $('#boosters').getBoundingClientRect();
-  view.setInsets(hud.bottom, window.innerHeight + vgap - b.top);
+  view.setInsets(hud.bottom, appH - b.top);
 }
 
 function updateCoins() {

@@ -1580,7 +1580,57 @@ body.booting #menu, body.booting #menu * { animation-play-state: paused !importa
 /* ---------- iOS-Homescreen-App: Bildschirm ganz füllen ----------
    In der Homescreen-App meldet iOS teils eine um die Statusleiste zu kleine
    Fensterhöhe; ohne Ausgleich bleibt unten ein farbiger Streifen. */
-canvas#game { height: calc(100dvh + var(--vgap)); }
+canvas#game { height: var(--app-h, 100dvh); }
 .screen, .modal, .splash, .fader { bottom: calc(-1 * var(--vgap)); }
 #boosters { bottom: calc(-1 * var(--vgap)); }
 #menu .menu-fx .cloud.c1 { top: 7%; }
+
+/* ---------- Moderner Button-Look (ab v0.3.6) ----------
+   Ersetzt den Glas/Chrom-Look: satte Farbe mit weichem Verlauf, dicker dunkler
+   Sockel unten (3D), feine Lichtkante oben, kein weißer Außenring, keine
+   Glanzkappe, kein wandernder Glanzstreifen. Farben kommen aus --m2/--m4/--m-edge. */
+.play-btn, .btn, .tile-btn, .icon-btn, .level-grid button:not(:disabled), .seg button.on {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--m2) 78%, #fff) 0%, var(--m2) 42%, var(--m4) 100%);
+}
+.play-btn, .btn, .tile-btn {
+  border: 0;
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.38),
+    inset 0 -4px 0 rgba(0,0,0,0.10),
+    0 6px 0 var(--m-edge),
+    0 12px 18px rgba(0,20,60,0.30);
+}
+.play-btn {
+  border-radius: 28px;
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.42),
+    inset 0 -6px 0 rgba(0,0,0,0.10),
+    0 8px 0 var(--m-edge),
+    0 16px 24px rgba(0,30,10,0.35);
+}
+.tile-btn { border-radius: 22px; }
+.btn { border-radius: 18px; }
+.play-btn:active, .btn:active, .tile-btn:active {
+  transform: translateY(5px);
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.32),
+    inset 0 -3px 0 rgba(0,0,0,0.10),
+    0 1px 0 var(--m-edge),
+    0 4px 8px rgba(0,20,60,0.25);
+}
+.play-btn::after, .tile-btn::after, .btn::after { content: none !important; animation: none !important; }
+.play-ico {
+  background: #fff;
+  box-shadow: 0 3px 0 rgba(0,0,0,0.18);
+}
+.icon-btn {
+  border: 0;
+  box-shadow: inset 0 2px 0 rgba(255,255,255,0.4), inset 0 -3px 0 rgba(0,0,0,0.1), 0 4px 0 var(--m-edge), 0 7px 12px rgba(0,20,60,0.28);
+}
+.level-grid button:not(:disabled) {
+  box-shadow: inset 0 2px 0 rgba(255,255,255,0.38), inset 0 -3px 0 rgba(0,0,0,0.1), 0 4px 0 var(--m-edge), 0 6px 10px rgba(0,20,60,0.22);
+}
+.booster:not(.locked) {
+  background: linear-gradient(180deg, #ffffff 0%, #eef4fb 100%);
+  box-shadow: inset 0 -3px 0 rgba(30,70,140,0.08), 0 5px 0 #a9bdd8, 0 9px 14px rgba(0,30,80,0.28);
+}
