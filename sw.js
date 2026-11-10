@@ -44,7 +44,7 @@ const CORE = [
   'assets/boosters/shuffle.png',
   'assets/boosters/crane.png',
   'assets/boosters/forklift.png',
-  ...Array.from({ length: 10 }, (_, i) => `assets/worlds/w${i + 1}.webp`),
+  ...Array.from({ length: 30 }, (_, i) => `assets/worlds/w${i + 1}.webp`),
 ];
 
 self.addEventListener('install', (e) => {

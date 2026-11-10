@@ -69,6 +69,50 @@ async function generate(from = 1, to = LEVEL_PLAN.length) {
   $('#save').disabled = false;
 }
 
+// Wie generate(), aber parallel in Web Workern (ein Level pro Worker gleichzeitig).
+async function generateParallel(from = 1, to = LEVEL_PLAN.length, workers = 16, maxTries) {
+  tbody.innerHTML = '';
+  $('#log').textContent = '';
+  // from als Liste von Level-Nummern: nur diese neu erzeugen, übrige Ergebnisse im Speicher behalten
+  const list = Array.isArray(from);
+  if (!list) levels = await loadExisting();
+  window.genStatus = 'running';
+  window.genFailed = [];
+  const todo = list ? from.map((n) => n - 1) : [];
+  if (!list) for (let i = from - 1; i < to; i++) todo.push(i);
+  const total = todo.length;
+  let done = 0;
+  const run = () => new Promise((resolve) => {
+    const wk = new Worker(new URL('./levelgen-worker.js', import.meta.url), { type: 'module' });
+    const next = () => {
+      const i = todo.shift();
+      if (i === undefined) { wk.terminate(); resolve(); return; }
+      wk.postMessage({ i, maxTries });
+    };
+    wk.onmessage = ({ data: { i, res, ms } }) => {
+      done++;
+      window.genProgress = `${done}/${total}`;
+      if (!res) {
+        row(i, null, null, null, null, null, false, `kein Seed (${ms} ms)`);
+        window.genFailed.push(i + 1);
+      } else {
+        levels[i] = { id: i + 1, ...res.level };
+        (window.genStats ||= {})[i + 1] = { ...res.stats, n: res.level.trucks.length, ms };
+        row(i, levels[i], res.seed, levels[i].w + '×' + levels[i].h, res.stats.rate, res.stats.moves, true, `${ms} ms`);
+      }
+      next();
+    };
+    wk.onerror = (e) => { log('Worker-Fehler: ' + e.message); window.genFailed.push('worker'); wk.terminate(); resolve(); };
+    next();
+  });
+  await Promise.all(Array.from({ length: Math.min(workers, todo.length) }, run));
+  window.genFailed.sort((a, b) => a - b);
+  const failed = window.genFailed.length;
+  log(failed ? `Fehlgeschlagen: ${window.genFailed.join(', ')}` : 'Alle OK.');
+  window.genStatus = failed ? 'failed' : 'done';
+  $('#save').disabled = false;
+}
+
 async function save() {
   const out = levels.filter(Boolean);
   if (out.length !== levels.length) { log('Lücken im Bestand, nicht gespeichert.'); return; }
@@ -106,4 +150,4 @@ async function check() {
 $('#gen').onclick = () => generate(+$('#from').value, +$('#to').value);
 $('#save').onclick = save;
 $('#check').onclick = check;
-window.lg = { generate, save, check };
+window.lg = { generate, generateParallel, save, check };

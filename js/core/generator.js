@@ -499,7 +499,8 @@ export function findLevel(p, startSeed, { maxTries = 300 } = {}) {
     // Zu wenige LKWs? (Grenze sinkt langsam, falls die Form nicht mehr hergibt)
     if (p.minTrucks && lv.trucks.length < p.minTrucks - Math.floor(smallFails / 40)) { smallFails++; continue; }
     if (p.minCell && lotCell(lv) < p.minCell) { cellFails++; continue; }
-    if (p.require && p.require !== 'rush' && !hasMechanic(lv, p.require)) continue;
+    // require: eine Mechanik oder Liste (ab v0.6.0); Eilaufträge kommen erst danach dazu
+    if (p.require && [].concat(p.require).some((m) => m !== 'rush' && !hasMechanic(lv, m))) continue;
     if (p.rush) addRush(lv, lv.sol, makeRng(seed * 31), p.rush);
     if (!replaySolution(lv)) continue;
     const rate = playoutRate(lv, p.playouts || 60, seed, p.smart ?? 0.85);

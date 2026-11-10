@@ -1,4 +1,4 @@
-// Parameterplan für den Level-Generator (100 Level, 10 Welten).
+// Parameterplan für den Level-Generator (300 Level, 30 Welten).
 // Wird nur von tools/levelgen.html genutzt, nicht vom Spiel selbst.
 // Bedeutung der Parameter: siehe js/core/generator.js.
 //
@@ -120,8 +120,78 @@ function worldLevel(w, j) {
   return p;
 }
 
+// Welten 11–30 (ab v0.6.0): Jede Welt kombiniert zwei Mechaniken. Die Schwierigkeit
+// läuft als Sägezahn: Jede Welt beginnt etwas leichter und steigt bis zum Boss-Level.
+// Welten 21–30 liegen eine Stufe höher. Level 5 jeder Welt ist eine Verschnaufpause.
+const COMBOS = [
+  ['hidden', 'gate'], ['barrier', 'rush'], ['trailer', 'chain'], ['covered', 'turntable'], ['gate', 'barrier'],
+  ['chain', 'turntable'], ['hidden', 'trailer'], ['rush', 'covered'], ['gate', 'chain'], ['barrier', 'turntable'],
+  ['hidden', 'barrier'], ['gate', 'rush'], ['trailer', 'covered'], ['chain', 'hidden'], ['turntable', 'gate'],
+  ['rush', 'trailer'], ['covered', 'barrier'], ['chain', 'rush'], ['turntable', 'hidden'], ['gate', 'covered'],
+];
+function addMech(p, m, strong) {
+  if (m === 'hidden') p.hidden = strong ? 0.4 : 0.25;
+  if (m === 'gate') { p.gates = 1; p.gateQ = strong ? [3, 4] : [2, 3]; } // 2 Tore lassen zu wenig Platz
+  if (m === 'barrier') { p.barriers = strong ? 2 : 1; p.barrierN = [2, 4]; }
+  if (m === 'rush') p.rush = strong ? 2 : 1;
+  if (m === 'trailer') p.mix.T = strong ? 2 : 1.5;
+  if (m === 'chain') p.chains = strong ? 2 : 1;
+  if (m === 'covered') p.covered = strong ? 0.3 : 0.2;
+  if (m === 'turntable') p.turntables = strong ? 2 : 1;
+}
+function lateLevel(w, j) {
+  const n = 10 + w * 10 + j;
+  const intro = j === 0;
+  const boss = j === 9;
+  const rest = j === 4;
+  const tier = w >= 20 ? 1 : 0;
+  const k = intro ? 0 : j;
+  const lvl = Math.min(11, 7 + k * 0.3 + tier * 0.6 + (rest ? -1 : 0));
+  const minCell = 22;
+  const rMax = (R_MAX * 24) / minCell;
+  const p = {
+    ...base,
+    minCell,
+    minTrucks: intro || rest ? 12 + tier : 14 + tier + Math.floor(k / 3),
+    shape: SHAPE_CYCLE[(n * 5) % SHAPE_CYCLE.length],
+    angle: 0,
+    chaos: Math.min(0.85, 0.55 + k * 0.03 + tier * 0.05),
+    R: rMax,
+    density: Math.min(0.82, 0.66 + lvl * 0.018),
+    maxTrucks: 34,
+    colors: intro ? 7 : 8,
+    mix: { S: 3, M: 2, L: 1 + lvl * 0.08, T: 0.6 },
+    chunk: [lvl >= 8 ? 1 : 2, lvl >= 9 ? 3 : 4],
+    stay: Math.max(0.15, 0.45 - lvl * 0.03),
+    deep: Math.min(0.75, 0.35 + lvl * 0.04),
+    slack: 0,
+    traps: intro || rest ? 2 + tier : Math.min(7, 3 + tier + Math.floor(k / 3) + (boss ? 2 : 0)),
+    human: intro || rest ? 0.45 - tier * 0.05 : boss ? 0.1 : Math.max(0.1, 0.35 - k * 0.025 - tier * 0.04),
+    humanLo: intro || rest ? 0.12 : boss ? 0 : 0.03,
+    target: [0.05, 0.6],
+  };
+  if (p.shape === 'triangle') p.shape = 'blob';
+  if (p.shape === 'ring' || p.shape === 'cross' || p.shape === 'star') p.R = rMax + 0.4;
+  // Die beiden Mechaniken der Welt kommen in jedem Level vor (ab Level 6 verstärkt),
+  // im Boss-Level zusätzlich die Mechaniken der nächsten Welt.
+  const [a, b] = COMBOS[w - 10];
+  addMech(p, a, k >= 6);
+  addMech(p, b, k >= 6);
+  p.require = [a, b];
+  // Tor + Schranke brauchen schon viel Platz: dann im Boss-Level keine dritte Mechanik
+  // und eine Falle weniger
+  const crowded = p.require.includes('gate') && p.require.includes('barrier');
+  if (crowded) p.traps = Math.min(p.traps, 6);
+  if (boss && !crowded) {
+    const [c] = COMBOS[(w - 9) % COMBOS.length].filter((m) => m !== a && m !== b);
+    if (c) addMech(p, c, false);
+  }
+  return p;
+}
+
 export const LEVEL_PLAN = [...WORLD1];
 for (let w = 1; w <= 9; w++) for (let j = 0; j < 10; j++) LEVEL_PLAN.push(worldLevel(w, j));
+for (let w = 10; w <= 29; w++) for (let j = 0; j < 10; j++) LEVEL_PLAN.push(lateLevel(w, j));
 
 // Welt-Infos (Level-Nummer, an der die Mechanik eingeführt wird)
 export const WORLDS = [
@@ -135,4 +205,5 @@ export const WORLDS = [
   { from: 71, mech: 'covered' },
   { from: 81, mech: 'turntable' },
   { from: 91, mech: 'master' },
+  ...COMBOS.map((mech, i) => ({ from: 101 + i * 10, mech })),
 ];

@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 10.11.2026 · Version 0.5.4
+Stand: 11.11.2026 · Version 0.6.0
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -61,7 +61,7 @@ dieser Farbe.
 - Ein LKW setzt erst rückwärts in die Bucht, wenn sie wirklich frei ist; sonst
   wartet er davor. LKWs fahren nie ineinander.
 
-## 5. Welten und Mechaniken (100 Level)
+## 5. Welten und Mechaniken (200 Level)
 
 Alle 10 Level beginnt eine neue Welt mit einer neuen Mechanik. Die erste
 Begegnung wird mit einem kurzen Hinweis-Fenster erklärt. Es gibt keine
@@ -80,6 +80,35 @@ jedes Level garantiert prüfen kann.
 | 71–80 | Kartonpaletten | Manche Paletten in der Schlange sind verpackt, ihre Farbe sieht man erst an der Ladestation. |
 | 81–90 | Drehscheibe | Ein LKW auf einer Drehscheibe dreht sich bei jedem Zug um 90°. |
 | 91–100 | Meisterwelt | Alle Mechaniken gemischt. |
+
+### Welten 11–20 (ab v0.6.0, Level 101–200)
+
+Keine neue Mechanik mehr. Jede Welt kombiniert zwei bekannte Mechaniken, die in
+jedem ihrer Level vorkommen (ab Level 6 der Welt verstärkt). Das Boss-Level
+nimmt eine Mechanik der nächsten Welt dazu. Die Schwierigkeit läuft als
+Sägezahn: Jede Welt beginnt etwas leichter, Level 5 ist eine Verschnaufpause,
+dann steigt sie bis zum Boss-Level. Zwei Tore in einem Level gibt es hier nicht
+(zu wenig Platz), stattdessen warten mehr LKWs hinter dem Tor.
+
+| Welt | Level | Name | Mechaniken |
+|---|---|---|---|
+| 11 | 101–110 | Abendlager | Plane + Tor |
+| 12 | 111–120 | Abendhafen | Schranke + Eilauftrag |
+| 13 | 121–130 | Canyon-Depot | Anhängerzug + Kette |
+| 14 | 131–140 | Gletscherpass | Kartonpaletten + Drehscheibe |
+| 15 | 141–150 | Neonufer | Tor + Schranke |
+| 16 | 151–160 | Herbstwald | Kette + Drehscheibe |
+| 17 | 161–170 | Palmenbucht | Plane + Anhängerzug |
+| 18 | 171–180 | Hüttenwerk | Eilauftrag + Kartonpaletten |
+| 19 | 181–190 | Frachtflughafen | Tor + Kette |
+| 20 | 191–200 | Kronlager | Schranke + Drehscheibe |
+
+Plan und Kombinationen für die Welten 21–30 stehen schon in
+`js/data/levelplan.js` (`COMBOS`, `lateLevel`), ihre Level sind noch nicht erzeugt.
+
+Weltbanner 11–30 sind Farbvarianten der Banner 1–10: Welten 11–20 in
+Abendstimmung, Welten 21–30 bei Nacht (warme Lichter bleiben hell). Erzeugt mit
+Pillow, ohne neue Grafiken.
 
 ## 6. Bonus-Items
 
