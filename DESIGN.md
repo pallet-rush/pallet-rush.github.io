@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 10.11.2026 · Version 0.3.3
+Stand: 10.11.2026 · Version 0.3.4
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen

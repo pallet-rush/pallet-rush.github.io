@@ -710,7 +710,7 @@ registerSW();
 // ---------- Ladebildschirm ----------
 // Wartet, bis die wichtigsten Bilder geladen sind (max. 6 s), dann sanftes Ausblenden.
 function bootSplash() {
-  const IMGS = ['assets/logo.png', 'assets/menu-bg2.jpg', 'assets/win.png', 'assets/lose.png',
+  const IMGS = ['assets/logo.png', 'assets/menu-bg3.jpg', 'assets/win.png', 'assets/lose.png',
     ...BOOSTERS.map((b) => `assets/boosters/${b.key}.png`)];
   const fill = $('#splash-fill');
   $('#splash-text').textContent = t('loading');

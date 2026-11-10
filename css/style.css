@@ -920,12 +920,12 @@ svg { display: block; }
 }
 
 
-/* ---------- Menü mit Titelbild (assets/menu-bg2.jpg) und eigenem Logo (assets/logo.png) ---------- */
+/* ---------- Menü mit Titelbild (assets/menu-bg3.jpg) und eigenem Logo (assets/logo.png) ---------- */
 #menu.menu-art {
   /* Hintergrund füllt den Bildschirm; Himmel oben (Logo), Straße unten (Buttons). */
   background:
     linear-gradient(0deg, rgba(10,24,70,0.62) 0%, rgba(10,24,70,0.22) 26%, rgba(10,24,70,0) 46%),
-    url('../assets/menu-bg2.jpg') center 30% / cover no-repeat,
+    url('../assets/menu-bg3.jpg') center 30% / cover no-repeat,
     #3a4a74;
 }
 #menu.menu-art .sunburst,
@@ -1227,7 +1227,7 @@ svg { display: block; }
 /* Hintergrund atmet langsam (leichter Zoom) */
 #menu .menu-fx .bg {
   position: absolute; inset: 0;
-  background: url('../assets/menu-bg2.jpg') center 30% / cover no-repeat;
+  background: url('../assets/menu-bg3.jpg') center 30% / cover no-repeat;
   animation: bg-breathe 18s ease-in-out infinite alternate;
   transform-origin: 50% 40%;
 }

@@ -32,7 +32,7 @@ const CORE = [
   'js/render/vehicles.js',
   'js/render/view.js',
   'assets/logo.png',
-  'assets/menu-bg2.jpg',
+  'assets/menu-bg3.jpg',
   'assets/win.png',
   'assets/lose.png',
   'assets/favicon-64.png',
