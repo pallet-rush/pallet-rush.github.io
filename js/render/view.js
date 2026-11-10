@@ -30,7 +30,9 @@ const CORNER = 26;
 const REV_R = 30; // Radius beim Rückwärts-Einparken
 const PALLET = 12; // Palettengröße auf den Bändern
 const GAP = 18; // (alt) Abstand der Paletten auf einer Spur
-const COLS = 4; // Paletten nebeneinander auf einem Band
+const COLS = 4; // Paletten nebeneinander auf einem Band (= ein Block)
+const WINDOW = 3; // Ausgabeplätze: links, Mitte, rechts
+const SLOT_D = 46; // Abstand der seitlichen Ausgabeplätze vom Bandende
 const COL_GAP = 13.5; // Querabstand der Spalten
 const ROW_GAP = 15; // Abstand der Reihen
 const BELT_W = 60; // Breite der Zulieferbänder
@@ -165,8 +167,12 @@ export class GameView {
     this.cranes = [];
     this.endEv = null;
     this.order = 0;
-    this.shownSi = 0;
-    this.qHead = 0;
+    this.vGone = new Set(); // Paletten, die (sichtbar) schon weg sind
+    this.vHead = 0;
+    this.pp = new Map(); // aktuelle Position jeder sichtbaren Palette
+    this._slotOf = new Map();
+    this.qMoving = false;
+    this.frameDt = 16;
     this.nextLoadAt = 0;
     this.beltPhase = 0;
     this.dockPhase = 0;
@@ -323,8 +329,7 @@ export class GameView {
     this.demo = null;
     this.layout();
     this.initTrucks(game);
-    this.shownSi = game.si;
-    this.qHead = game.si;
+    for (let i = 0; i < game.supply.length; i++) if (i < game.si || game.used[(i / COLS) | 0]) this.vGone.add(i);
     if (game.startEvents?.length) this.play(game.startEvents.filter((e) => e.type !== 'spawn' && e.type !== 'reveal'));
   }
 
@@ -589,6 +594,15 @@ export class GameView {
 
   evForkload(ev, now) {
     const tv = this.tvs[ev.id];
+    for (const b of ev.blocks || []) {
+      for (let k = 0; k < COLS; k++) {
+        const q = b * COLS + k;
+        const p = this.pp.get(q);
+        if (p && k === 0) this.fx.push({ type: 'puff', x: p.x, y: p.y, t0: now, s: 10 });
+        this.vGone.add(q);
+        this.pp.delete(q);
+      }
+    }
     tv.pending += ev.count;
     this.forklifts.push({ t0: now, tv, ev, done: 0 });
     if (!this.quiet) sfx.start();
@@ -798,12 +812,16 @@ export class GameView {
       const tv = this.tvs[ev.id];
       if (tv.state !== 'dock' || now - tv.dockAt < 160) break;
       this.loads.shift();
-      this.shownSi = ev.q + 1;
+      const st = this.pp.get(ev.q) || { x: L.S.x, y: L.S.y };
+      this.vGone.add(ev.q);
+      this.pp.delete(ev.q);
       const bx = tv.dockX ?? L.bays[tv.bay];
       const slot = vehicleSlot(tv.size, tv.cell, ev.comp, ev.n);
-      const dist = Math.abs(bx - L.S.x);
-      const path = makePath([{ x: L.S.x, y: L.S.y }, { x: L.S.x, y: L.D }, { x: bx, y: L.D }], 10);
-      this.flights.push({ t0: now, slide: 120 + dist * 1.15, hop: 260, path, tv, ev, slot, code: ev.code });
+      const pts = [{ x: st.x, y: st.y }];
+      if (Math.hypot(st.x - L.S.x, st.y - L.S.y) > 3) pts.push({ x: L.S.x, y: L.S.y });
+      pts.push({ x: L.S.x, y: L.D }, { x: bx, y: L.D });
+      const path = makePath(pts, 10);
+      this.flights.push({ t0: now, slide: 120 + path.length * 1.0, hop: 260, path, tv, ev, slot, code: ev.code });
       this.nextLoadAt = now + LOAD_EVERY;
     }
     for (const f of this.flights.slice()) {
@@ -914,11 +932,8 @@ export class GameView {
       this.updateCranes(now);
       this.updateLoads(now);
       this.updateMisc(now);
-      // Schlange rückt weich nach
-      this.qHead += (this.shownSi - this.qHead) * Math.min(1, dt * 0.012);
-      if (Math.abs(this.shownSi - this.qHead) < 0.002) this.qHead = this.shownSi;
-      const moving = Math.abs(this.shownSi - this.qHead) > 0.01;
-      this.beltPhase += dt * (moving ? 0.09 : 0.012);
+      this.frameDt = dt;
+      this.beltPhase += dt * (this.qMoving ? 0.09 : 0.012);
       this.dockPhase += dt * (this.flights.length ? 0.12 : 0.0);
     }
     if (this.idleCbs.length && this.isIdle()) {
@@ -1288,32 +1303,44 @@ export class GameView {
     const ph = this.beltPhase;
     for (const p of paths) P.drawConveyor(ctx, p, BELT_W, ph, { layer: 'belt', color: '#ff8a00' });
     const L = this.L;
-    P.drawDockConveyor(ctx, 22, VW - 22, L.D, 14, this.dockPhase, { layer: 'belt' });
+    // Rollenbahn läuft von der Station aus nach außen: links nach links, rechts nach rechts
+    P.drawDockConveyor(ctx, 22, L.S.x, L.D, 14, -this.dockPhase, { layer: 'belt' });
+    P.drawDockConveyor(ctx, L.S.x, VW - 22, L.D, 14, this.dockPhase, { layer: 'belt' });
     const g = this.game || this.demo;
-    // Weiche zeigt auf die Spur der nächsten Palette
-    const next = Math.round(this.qHead) + 1;
-    const want = next % 2 === 0 ? -1 : 1;
+    // Weiche zeigt auf die Spur des vordersten Blocks
+    const want = this._frontLane === 1 ? 1 : -1;
     this.switchSide = lerp(this.switchSide ?? want, want, 0.2);
     P.drawMergeSwitch(ctx, L.M.x, L.M.y, 18, this.switchSide);
     let ok = true;
     if (g && g.status === 'playing' && !this.loads.length && !this.flights.length) {
-      const f = g.front();
-      ok = f < 0 || !!g._findTarget(f & 15);
+      ok = g.front() < 0 || g.canLoadNow();
     }
     P.drawLoadingStation(ctx, L.S.x, L.S.y, 34, now / 1000, ok);
   }
 
-  drawQueue(ctx, now, g) {
+  // Lage der drei Ausgabeplätze: L/R = vorderste Reihe der linken/rechten Spur, C = 2×2 an der Station
+  slotPos(slot, k) {
     const L = this.L;
-    const head = this.qHead;
+    if (slot === 'C') {
+      const g2 = 6.4;
+      return { x: L.S.x + (k % 2 ? g2 : -g2), y: L.S.y - 8 + (k < 2 ? -g2 : g2), a: Math.PI / 2 };
+    }
+    return this.lanePos(slot === 'L' ? 0 : 1, SLOT_D, k);
+  }
+  lanePos(lane, dist, k) {
+    const ln = this.L.lanes[lane];
+    const p = ln.at(ln.length - dist);
+    const off = (k - (COLS - 1) / 2) * COL_GAP;
+    return { x: p.x - Math.sin(p.a) * off, y: p.y + Math.cos(p.a) * off, a: p.a };
+  }
+
+  drawQueue(ctx, now, g) {
     const pop = clamp((now - this.popAt) / 450, 0, 1);
-    const start = Math.max(0, Math.floor(head) - 1);
-    // Farbgruppen (aufeinanderfolgende gleiche Blöcke) bleiben auf einer Bandseite;
-    // die Gruppen wechseln sich links/rechts ab. Reihe = Blöcke davor auf derselben Seite.
-    const sup = g.supply, nb = Math.ceil(sup.length / COLS);
+    const sup = g.supply, nb = Math.floor(sup.length / COLS);
+    // Farbgruppen (aufeinanderfolgende gleiche Blöcke) bleiben auf einer Bandseite
     if (this._qSup !== sup || this._qLen !== sup.length) {
       this._qSup = sup; this._qLen = sup.length;
-      const laneOf = new Int8Array(nb);
+      const laneOf = new Int8Array(nb + 1);
       let run = 0;
       for (let b = 0; b < nb; b++) {
         if (b > 0 && sup[b * COLS] !== sup[(b - 1) * COLS]) run++;
@@ -1322,40 +1349,106 @@ export class GameView {
       this._qLane = laneOf;
     }
     const laneOf = this._qLane;
-    const hb = Math.floor(head / COLS), frac = (head - hb * COLS) / COLS;
-    const rowOf = new Float32Array(Math.min(nb, hb + 40) - hb + 1);
-    const cnt = [0, 0];
-    for (let b = hb; b < Math.min(nb, hb + 40); b++) {
+    const gone = this.vGone;
+    const blockGone = (b) => { for (let k = 0; k < COLS; k++) if (!gone.has(b * COLS + k)) return false; return true; };
+    let b0 = this.vHead;
+    while (b0 < nb && blockGone(b0)) b0++;
+    this.vHead = b0;
+    const open = [];
+    const rest = [];
+    for (let b = b0; b < nb && rest.length < 50; b++) {
+      if (blockGone(b)) continue;
+      if (open.length < WINDOW) open.push(b); else rest.push(b);
+    }
+    this._frontLane = open.length ? laneOf[open[0]] : 0;
+    // Plätze vergeben: bisherige behalten, sonst eigene Spur, dann Mitte, dann andere Seite
+    const prev = this._slotOf;
+    const slotOf = new Map();
+    const taken = {};
+    for (const b of open) {
+      const sl = prev.get(b);
+      if (sl && !taken[sl]) { taken[sl] = 1; slotOf.set(b, sl); }
+    }
+    for (const b of open) {
+      if (slotOf.has(b)) continue;
+      const own = laneOf[b] === 0 ? 'L' : 'R';
+      const sl = !taken[own] ? own : !taken.C ? 'C' : own === 'L' ? 'R' : 'L';
+      taken[sl] = 1;
+      slotOf.set(b, sl);
+    }
+    this._slotOf = slotOf;
+    // Ausgabeplätze markieren (Fläche darunter, Rahmen später darüber)
+    const busySlots = new Set(slotOf.values());
+    for (const sl of ['L', 'C', 'R']) this.drawSlotPad(ctx, sl, busySlots.has(sl), now, 'fill');
+    // Zielpositionen
+    const target = [];
+    for (const b of open) {
+      const sl = slotOf.get(b);
+      for (let k = 0; k < COLS; k++) target.push([b * COLS + k, this.slotPos(sl, k), true]);
+    }
+    const cnt = [1, 1];
+    for (const b of rest) {
       const ln = laneOf[b];
-      // der vorderste Block rückt beim Abarbeiten weich nach
-      rowOf[b - hb] = cnt[ln] - (ln === laneOf[hb] ? frac : 0);
-      cnt[ln]++;
+      const dist = SLOT_D + cnt[ln]++ * ROW_GAP;
+      if (dist > this.L.lanes[ln].length - 6) continue;
+      for (let k = 0; k < COLS; k++) target.push([b * COLS + k, this.lanePos(ln, dist, k), false]);
     }
-    for (let i = Math.min(g.supply.length - 1, start + 150); i >= start; i--) {
-      if (i < this.shownSi) continue; // schon unterwegs
-      const dd = i - head;
-      const code = g.supply[i];
-      let x;
-      let y;
-      let a;
-      if (dd <= 0.02) {
-        x = L.S.x; y = L.S.y; a = Math.PI / 2;
-      } else {
-        // Blöcke zu COLS Paletten liegen als Reihe nebeneinander, Blöcke wechseln die Seite
-        const blk = Math.floor(i / COLS);
-        if (blk - hb >= rowOf.length - 1) continue;
-        const lane = L.lanes[laneOf[blk]];
-        const dist = Math.max(0, rowOf[blk - hb]) * ROW_GAP + 46; // vor der Weiche: Reihen beider Seiten überlappen nicht
-        if (dist > lane.length - 6) continue;
-        const p = lane.at(lane.length - dist);
-        const off = ((i % COLS) - (COLS - 1) / 2) * COL_GAP;
-        x = p.x - Math.sin(p.a) * off; y = p.y + Math.cos(p.a) * off; a = p.a;
-      }
-      const stagger = clamp(pop * 2 - (i - start) * 0.02, 0, 1);
+    // Weich nachrücken
+    const kk = Math.min(1, this.frameDt * 0.012);
+    let moving = false;
+    const pp = this.pp;
+    for (const [i, t] of target) {
+      let p = pp.get(i);
+      if (!p) { p = { x: t.x, y: t.y, a: t.a }; pp.set(i, p); continue; }
+      const dx = t.x - p.x, dy = t.y - p.y;
+      if (Math.abs(dx) + Math.abs(dy) > 0.05) moving = true;
+      p.x += dx * kk; p.y += dy * kk;
+      let da = t.a - p.a;
+      while (da > Math.PI) da -= TAU;
+      while (da < -Math.PI) da += TAU;
+      p.a += da * kk;
+    }
+    this.qMoving = moving;
+    // Zeichnen: hinten zuerst
+    const first = b0 * COLS;
+    for (let n = target.length - 1; n >= 0; n--) {
+      const [i, , isOpen] = target[n];
+      const p = pp.get(i);
+      const code = sup[i];
+      const stagger = clamp(pop * 2 - (i - first) * 0.02, 0, 1);
       const sc = pop < 1 ? 0.5 + 0.5 * easeOut(stagger) : 1;
-      const covered = code >= COVER && dd > 0.5;
-      drawPallet(ctx, x, y, PALLET, code & 15, { angle: a, covered, symbols: this.symbols, scale: sc });
+      const covered = code >= COVER && !isOpen;
+      drawPallet(ctx, p.x, p.y, PALLET, code & 15, { angle: p.a, covered, symbols: this.symbols, scale: sc });
     }
+    for (const sl of ['L', 'C', 'R']) this.drawSlotPad(ctx, sl, busySlots.has(sl), now, 'stroke');
+  }
+
+  // Leuchtende Bodenmarkierung eines Ausgabeplatzes
+  drawSlotPad(ctx, sl, busy, now, part) {
+    let cx, cy, a, w, h;
+    if (sl === 'C') {
+      cx = this.L.S.x; cy = this.L.S.y - 8; a = 0; w = 30; h = 30;
+    } else {
+      const c = this.lanePos(sl === 'L' ? 0 : 1, SLOT_D, 1.5);
+      cx = c.x; cy = c.y; a = c.a + Math.PI / 2; w = COLS * COL_GAP + 5; h = 18;
+    }
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(a);
+    ctx.beginPath();
+    ctx.roundRect(-w / 2, -h / 2, w, h, 5);
+    if (part === 'fill') {
+      ctx.fillStyle = 'rgba(255,214,0,0.35)';
+      ctx.fill();
+    } else {
+      ctx.lineWidth = 2.4;
+      ctx.strokeStyle = 'rgba(120,70,0,0.35)';
+      ctx.stroke();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = busy ? '#ffe03c' : `rgba(255,224,60,${0.5 + 0.35 * Math.sin(now / 260)})`;
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   drawFlights(ctx, now) {

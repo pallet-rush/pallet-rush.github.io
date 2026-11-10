@@ -355,12 +355,12 @@ function referencePlay(level, p, rng) {
     const si0 = g.supply.length;
     for (let i = 0; i < BLOCK; i++) emit(comp.color);
     for (const id of choice.plan) {
-      if (g.si > si0) break;
+      if (g.used[si0 / BLOCK]) break;
       const r = g.tap(id);
       if (!r.ok) return null;
       path.push(id);
     }
-    if (g.si <= si0) return null;
+    if (!g.used[si0 / BLOCK]) return null;
   }
   if (!g.trucks.every((t) => t.state === GONE)) return null;
   return { supply: g.supply, path };

@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 10.11.2026 · Version 0.3.1
+Stand: 10.11.2026 · Version 0.3.2
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -15,9 +15,10 @@ stehen farbige LKWs dicht an dicht. Der Spieler tippt LKWs an, die dann
 vorwärts aus dem Stau fahren, aber nur wenn der Weg frei ist. Jeder LKW, der
 rauskommt, fährt über die Ringstraße und parkt rückwärts an einer der 4
 **Laderampen**. Aus der Halle kommt eine lange **Schlange farbiger Paletten**
-über zwei Zulieferbänder und ein rundes Förderband zur Ladestation. Nur die
-**vorderste** Palette wird geladen, und nur in einen LKW derselben Farbe. Ist
-ein LKW voll, fährt er ab und die Rampe wird frei.
+über zwei Zulieferbänder und ein rundes Förderband. Unten im U liegen drei
+**Ausgabeplätze** (links, Mitte, rechts) mit je einem Block aus 4 Paletten.
+Diese drei Blöcke können verladen werden, jeder nur in einen LKW derselben
+Farbe. Ist ein LKW voll, fährt er ab und die Rampe wird frei.
 
 Das Spielprinzip entspricht dem bekannten Genre-Vorbild. Name, Grafik, Sounds,
 Level und Optik sind vollständig eigenständig, es werden keine fremden
@@ -30,12 +31,12 @@ Inhalte übernommen.
 | Antippen | Der LKW fährt vorwärts in Pfeilrichtung (Fahrerhaus = vorne) aus dem Hof. Ist der Weg versperrt, ruckelt er kurz und bleibt stehen. |
 | Rampe nötig | Ein LKW fährt nur los, wenn eine Rampe frei ist. Sonst kommt der Hinweis „Keine Rampe frei“. |
 | Zuglimit | Keins. |
-| Beladen | Warteschlange: Nur die vorderste Palette (an der Ladestation) wird geladen, in einen geparkten LKW gleicher Farbe. Passt sie zu keinem, wartet die ganze Schlange. Bei zwei passenden LKWs bekommt der die Palette, dem am wenigsten bis „voll“ fehlt. |
+| Beladen | Die Schlange besteht aus Blöcken zu 4 gleichfarbigen Paletten. Die vordersten 3 noch nicht verladenen Blöcke liegen an den Ausgabeplätzen (links, Mitte, rechts) und werden jeweils als ganzer Block in einen geparkten LKW gleicher Farbe geladen (vorderster Block zuerst). Passt keiner davon, wartet die Schlange. Bei zwei passenden LKWs bekommt der den Block, dem am wenigsten bis „voll“ fehlt. Ein frei gewordener Ausgabeplatz wird mit dem nächsten Block der Schlange gefüllt. |
 | Paletten-Blöcke | Paletten kommen immer in Blöcken zu 4 gleichfarbigen Paletten, die nebeneinander auf dem breiten Band fahren. Alle Ladekapazitäten (8 / 24 / 40) sind Vielfache von 4. Farbgruppen bleiben auf einer Bandseite, die Gruppen wechseln sich links/rechts ab. |
 | Schlange | Feste Reihenfolge. Sie kommt aus zwei Hallentoren über gerade Zulieferbänder, die in das runde Förderband münden; an der Weiche laufen beide Spuren abwechselnd zusammen. Man sieht etwa 20 Paletten im Voraus. |
 | Abfahrt | Ein voller LKW fährt sofort ab, die Rampe ist frei. |
 | Gewonnen | Alle LKWs sind voll beladen abgefahren. |
-| Verloren | Alle Rampen sind belegt und die vorderste Palette passt zu keinem geparkten LKW. Dann ist keine Aktion mehr möglich. |
+| Verloren | Alle Rampen sind belegt und keiner der 3 Blöcke an den Ausgabeplätzen passt zu einem geparkten LKW. Dann ist keine Aktion mehr möglich. |
 | Undo | Gibt es nicht. |
 | Leben | Kein Leben-System. Nach einer Niederlage startet man das Level sofort neu, ohne Wartezeit. |
 | Warnung | Ist nur noch 1 Rampe frei, erscheint ruhig „Nur noch 1 Rampe frei!“. Die Niederlage wird nur gemeldet, wenn sie laut Spiellogik wirklich feststeht, also keine falschen Meldungen. |
@@ -89,9 +90,9 @@ mit Münzen kaufen.
 | Bonus | Wirkung | Freigeschaltet | Preis |
 |---|---|---|---|
 | Extra-Rampe | +1 Rampe für den Rest des Levels (max. 1× pro Level) | Level 10 | 250 |
-| Umsortieren | Holt die Paletten für die geparkten LKWs aus der ganzen Schlange nach vorne und mischt die nächsten 40 übrigen | Level 20 | 200 |
+| Umsortieren | Holt die Blöcke für die geparkten LKWs aus der ganzen Schlange nach vorne und mischt die nächsten 10 übrigen Blöcke | Level 20 | 200 |
 | Kran | Hebt einen beliebigen LKW aus dem Stau direkt an eine freie Rampe | Level 30 | 300 |
-| Gabelstapler | Füllt einen geparkten LKW sofort mit passenden Paletten aus dem Nachschub | Level 40 | 400 |
+| Gabelstapler | Füllt einen geparkten LKW sofort mit passenden Blöcken vom Ende der Schlange | Level 40 | 400 |
 
 ## 7. Wirtschaft
 
@@ -120,8 +121,11 @@ mit Münzen kaufen.
    Spiellogik und legt dabei die Paletten-Schlange fest. Die gespielte Lösung
    wird mitgespeichert (`sol`) und beim Prüfen nachgespielt. Jedes Level ist
    damit garantiert ohne Boni lösbar.
-3. **Spielraum**: Die Referenz-Partie lässt meist 2 Rampen frei, damit Fehler
-   verziehen werden; jedes 3. Level und die Boss-Level (x0) nur 1.
+3. **Spielraum**: Die Referenz-Partie lässt in Level 1–2 zwei Rampen frei,
+   sonst meist eine; jedes 3. Level und die Boss-Level (x0) keine.
+   Seit v0.3.2 (3 Ausgabeplätze) sind die Zielbänder deutlich niedriger, damit
+   jedes Level ein echtes Rätsel bleibt (Level 1 ≈ 85–100 %, Level 10 ≈ 12–35 %,
+   späte Boss-Level unter 15 %).
 4. **Schwierigkeitskurve**: Für jedes Level werden 60 Partien eines
    simulierten, umsichtigen Spielers gespielt. Die Erfolgsquote muss in einem
    Zielband liegen (früh leicht, später anspruchsvoll, Verschnauf-Level nach
@@ -136,7 +140,8 @@ mit Münzen kaufen.
   Lesbarkeit), aber mit eigener Grafik, eigenem Namen und eigenen Leveln.
 - Hochformat, hohe Auflösung (bis 3× Pixeldichte), farbenfrohe 3D-Optik in
   Draufsicht. Von oben nach unten: Halle mit zwei Toren → gerade
-  Zulieferbänder → rundes Förderband → Weiche → Ladestation → Rollenbahn →
+  Zulieferbänder → rundes Förderband mit 3 gelb markierten Ausgabeplätzen →
+  Ladestation → Rollenbahn (läuft von der Station aus nach links und rechts) →
   4 Parkbuchten → Ringstraße (Einbahn im Uhrzeigersinn) → Stau im Inneren.
 - Der Stau ist ein freier, dichter Haufen ohne Rasterlinien auf hellem Beton,
   in wechselnden Formen und auch schräg.

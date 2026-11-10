@@ -8,6 +8,8 @@
 //  - dichteren Stau,
 //  - kleinere Paletten-Pakete (die Schlange wechselt öfter die Farbe),
 //  - target = Erfolgsquote simulierter Spieler (hoch = leicht).
+//  Seit v0.3.2 liegen 3 Blöcke gleichzeitig an den Ausgabeplätzen; damit es ein
+//  Rätsel bleibt, sind die Zielbänder deutlich niedriger und der Spielraum knapper.
 // Das erste Level jeder Welt ist leichter (neue Mechanik lernen).
 
 const base = { ramps: 4, playouts: 60, slack: 2 };
@@ -20,16 +22,16 @@ const SHAPE_CYCLE = [
 
 // Welt 1: Grundkurs (handverlesen)
 const WORLD1 = [
-  { shape: 'rect', angle: 0, R: 2.6, density: 0.55, colors: 2, mix: { S: 1 }, chunk: [4, 8], stay: 0.7, deep: 0, target: [0.9, 1] },
-  { shape: 'circle', angle: 0, R: 3.2, density: 0.6, colors: 3, mix: { S: 3, M: 1 }, chunk: [4, 8], stay: 0.6, deep: 0.1, target: [0.85, 1] },
-  { shape: 'diamond', angle: 45, R: 3.4, density: 0.62, colors: 3, mix: { S: 3, M: 1 }, chunk: [3, 7], stay: 0.6, deep: 0.15, target: [0.8, 1] },
-  { shape: 'heart', angle: 0, R: 3.8, density: 0.64, colors: 3, mix: { S: 3, M: 2 }, chunk: [3, 7], stay: 0.55, deep: 0.2, target: [0.75, 1] },
-  { shape: 'hexagon', angle: 45, R: 4.0, density: 0.66, colors: 4, mix: { S: 3, M: 2, L: 0.5 }, chunk: [3, 6], stay: 0.5, deep: 0.25, target: [0.7, 0.98] },
-  { shape: 'star', angle: 0, R: 4.4, density: 0.66, colors: 4, mix: { S: 3, M: 2, L: 1 }, chunk: [3, 6], stay: 0.5, deep: 0.3, target: [0.65, 0.95] },
-  { shape: 'cross', angle: 45, R: 4.6, density: 0.68, colors: 4, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 6], stay: 0.5, deep: 0.3, target: [0.6, 0.92] },
-  { shape: 'blob', angle: 0, R: 4.8, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 6], stay: 0.45, deep: 0.35, target: [0.55, 0.9] },
-  { shape: 'triangle', angle: 0, R: 5.0, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 5], stay: 0.45, deep: 0.35, target: [0.5, 0.88] },
-  { shape: 'ring', angle: 45, R: 5.2, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 5], stay: 0.4, deep: 0.4, target: [0.45, 0.85] },
+  { shape: 'rect', angle: 0, R: 2.6, density: 0.55, colors: 2, mix: { S: 1 }, chunk: [4, 8], stay: 0.7, deep: 0, target: [0.85, 1], slack: 2 },
+  { shape: 'circle', angle: 0, R: 3.2, density: 0.6, colors: 3, mix: { S: 3, M: 1 }, chunk: [4, 8], stay: 0.6, deep: 0.1, target: [0.7, 0.95], slack: 2 },
+  { shape: 'diamond', angle: 45, R: 3.4, density: 0.62, colors: 3, mix: { S: 3, M: 1 }, chunk: [3, 7], stay: 0.6, deep: 0.15, target: [0.5, 0.8], slack: 1 },
+  { shape: 'heart', angle: 0, R: 3.8, density: 0.64, colors: 3, mix: { S: 3, M: 2 }, chunk: [3, 7], stay: 0.55, deep: 0.2, target: [0.4, 0.7], slack: 1 },
+  { shape: 'hexagon', angle: 45, R: 4.0, density: 0.66, colors: 4, mix: { S: 3, M: 2, L: 0.5 }, chunk: [3, 6], stay: 0.5, deep: 0.25, target: [0.35, 0.6], slack: 1 },
+  { shape: 'star', angle: 0, R: 4.4, density: 0.66, colors: 4, mix: { S: 3, M: 2, L: 1 }, chunk: [3, 6], stay: 0.5, deep: 0.3, target: [0.3, 0.55], slack: 1 },
+  { shape: 'cross', angle: 45, R: 4.6, density: 0.68, colors: 4, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 6], stay: 0.5, deep: 0.3, target: [0.25, 0.5], slack: 1 },
+  { shape: 'blob', angle: 0, R: 4.8, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 6], stay: 0.45, deep: 0.35, target: [0.22, 0.45], slack: 1 },
+  { shape: 'triangle', angle: 0, R: 5.0, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 5], stay: 0.45, deep: 0.35, target: [0.2, 0.42], slack: 1 },
+  { shape: 'ring', angle: 45, R: 5.2, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 5], stay: 0.4, deep: 0.4, target: [0.12, 0.35], slack: 0 },
 ].map((p) => ({ ...base, ...p }));
 
 // Welten 2–10: Parameter folgen einer Kurve, plus die Mechanik der Welt.
@@ -51,12 +53,12 @@ function worldLevel(w, j) {
     stay: Math.max(0.15, 0.45 - lvl * 0.03),
     deep: Math.min(0.75, 0.35 + lvl * 0.04),
     // Jedes 3. Level ist knackiger (weniger Spielraum), das 10. ist ein Boss-Level.
-    slack: j === 9 || j % 3 === 2 ? 1 : 2,
+    slack: intro ? 1 : j === 9 || j % 3 === 2 ? 0 : 1,
     target: intro
-      ? [0.6, 1]
+      ? [0.4, 0.75]
       : j === 9
-        ? [Math.max(0.05, 0.3 - w * 0.02), Math.max(0.3, 0.55 - w * 0.02)]
-        : [Math.max(0.12, 0.62 - k * 0.025 - w * 0.035), Math.min(0.95, 0.95 - k * 0.02 - w * 0.03)],
+        ? [Math.max(0.03, 0.15 - w * 0.01), Math.max(0.15, 0.3 - w * 0.015)]
+        : [Math.max(0.08, 0.38 - k * 0.02 - w * 0.02), Math.max(0.25, 0.7 - k * 0.025 - w * 0.03)],
   };
   // Ringe und Kreuze haben wenig Fläche: etwas größer
   if (p.shape === 'ring' || p.shape === 'cross' || p.shape === 'star') p.R = Math.min(6.6, p.R + 0.5);

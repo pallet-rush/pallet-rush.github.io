@@ -18,12 +18,13 @@ function moveScore(g, id, dependents) {
     let n = 0;
     const end = Math.min(g.supply.length, g.si + LOOK);
     for (let i = g.si; i < end && n < comp.cap; i++) {
+      if (g.used[(i / 4) | 0]) continue;
       if ((g.supply[i] & 15) === comp.color) {
         w += 1 - (i - g.si) / LOOK;
         n++;
       }
     }
-    if (g.si < g.supply.length && (g.supply[g.si] & 15) === comp.color) w += 3;
+    for (const b of g.openBlocks()) if ((g.supply[b * 4] & 15) === comp.color) w += 3;
     s += w / Math.sqrt(comp.cap);
   }
   // Eilaufträge zuerst, wenn es knapp wird
