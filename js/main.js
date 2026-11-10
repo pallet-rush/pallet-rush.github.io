@@ -84,8 +84,10 @@ function safeArea() {
   const cs = getComputedStyle(safeProbe);
   return { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 };
 }
-const refit = () => { const old = vgap; fixViewportGap(); if (old !== vgap) { window.__prView?.resize(); if (typeof game !== 'undefined' && game) measureInsets(); } };
-window.addEventListener('orientationchange', () => setTimeout(refit, 300));
+// Nach dem Drehen immer neu messen (nicht nur, wenn sich die Lücke ändert): sonst
+// bleiben Leinwand und Ränder auf der alten Ausrichtung und Tipps treffen daneben.
+const refit = () => { fixViewportGap(); applyOrient(); window.__prView?.resize(); if (typeof game !== 'undefined' && game) measureInsets(); };
+window.addEventListener('orientationchange', () => { setTimeout(refit, 300); setTimeout(refit, 800); });
 window.addEventListener('pageshow', () => setTimeout(refit, 50));
 setTimeout(refit, 600);
 setTimeout(refit, 2000);

@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 10.11.2026 · Version 0.4.7
+Stand: 10.11.2026 · Version 0.4.8
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -137,6 +137,9 @@ mit Münzen kaufen.
   zurück ein und verlassen das Bild links. Stapler kommt von links.
 - Boni als Spalte am rechten Rand, HUD oben flacher; Menü: Logo links, Buttons
   rechts; Dialoge breiter und flacher, Buttons nebeneinander.
+- Nach dem Drehen (ab v0.4.8): Die Leinwand wird per ResizeObserver bei jeder echten
+  Größenänderung neu vermessen (iOS ändert die Höhe teils erst nach dem resize-Ereignis);
+  Tipps werden zusätzlich auf die tatsächlich angezeigte Größe umgerechnet.
 - Drehen während eines Levels: Abfahrende sind sofort weg, Ankommende stehen
   direkt an ihrer Rampe (oder fahren neu los, wenn sie noch belegt ist).
 

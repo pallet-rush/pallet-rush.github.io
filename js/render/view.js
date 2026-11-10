@@ -152,6 +152,14 @@ export class GameView {
     this.last = performance.now();
     canvas.addEventListener('pointerdown', (e) => this.onPointer(e));
     window.addEventListener('resize', () => this.resize());
+    // Nach dem Drehen ändert iOS die Größe teils erst nach dem resize-Ereignis
+    // (z. B. über --app-h). Dann wäre das Bild gestreckt und Tipps lägen daneben.
+    // Deshalb jede echte Größenänderung der Leinwand selbst beobachten.
+    if (window.ResizeObserver) {
+      new ResizeObserver(() => {
+        if (Math.abs(canvas.clientWidth - this.cw) > 0.5 || Math.abs(canvas.clientHeight - this.ch) > 0.5) this.resize();
+      }).observe(canvas);
+    }
     this.resetState();
     this.resize();
     const loop = (t) => {
@@ -702,7 +710,9 @@ export class GameView {
   // ---------- Eingabe ----------
   toVirtual(e) {
     const r = this.canvas.getBoundingClientRect();
-    return { x: (e.clientX - r.left - this.offX) / this.scale, y: (e.clientY - r.top) / this.scale };
+    // Auf die tatsächlich angezeigte Größe umrechnen (falls sie kurz von der Zeichengröße abweicht)
+    const kx = r.width ? this.cw / r.width : 1, ky = r.height ? this.ch / r.height : 1;
+    return { x: ((e.clientX - r.left) * kx - this.offX) / this.scale, y: ((e.clientY - r.top) * ky) / this.scale };
   }
   onPointer(e) {
     if (!this.game) return;
