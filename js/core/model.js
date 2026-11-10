@@ -5,7 +5,8 @@
 // Leveldaten-Format:
 // {
 //   id, w, h,              Hofgröße in Feldern
-//   ramps, belt,           Anzahl Rampen, Plätze auf dem Förderband
+//   angle                  Drehung des Hofs in Grad (nur Darstellung)
+//   ramps                  Anzahl Rampen
 //   trucks: [{ x, y, d, s, c, c2, h, r, k, tt }]
 //       x,y Kopf-Feld (Fahrerhaus), d Richtung U/D/L/R, s Größe S/M/L/T,
 //       c Farbe (c2 Farbe des Anhängers bei T), h=1 Plane (Farbe verdeckt),
@@ -14,8 +15,15 @@
 //       tt=1 steht auf einer Drehscheibe (dreht sich nach jedem Zug um 90°)
 //   gates: [{ x, y, d, q: [{ s, c, c2, h }] }]   Tore mit wartenden LKWs
 //   barriers: [{ cells: [[x,y],...], n }]         Schranke öffnet nach n Abfahrten
-//   supply: "0120ab..."    Nachschub: Ziffer = Palette, Buchstabe = Karton
+//   supply: "0120ab..."    Paletten-Schlange in fester Reihenfolge:
+//                          Ziffer = Palette, Buchstabe = Karton (Farbe verdeckt)
+//   sol: [ids]             (optional) eine Lösung, vom Generator mitgeliefert
 // }
+//
+// Regel wie bei einer Warteschlange: Nur die VORDERSTE Palette (supply[si]) kann
+// geladen werden, und zwar in einen geparkten LKW gleicher Farbe. Passt sie zu
+// keinem, wartet die ganze Schlange. Sind dann alle Rampen belegt, ist das Level
+// verloren.
 //
 // Jede Aktion liefert eine Liste von Ereignissen. Die Darstellung spielt diese
 // Ereignisse als Animation ab, die Logik ist dann schon fertig gerechnet.
@@ -36,6 +44,7 @@ export class Game {
     this.w = level.w;
     this.h = level.h;
     this.sandbox = !!opts.sandbox;
+    this.noEnd = !!opts.noEnd; // Generator: nie gewinnen/verlieren
     this.trucks = level.trucks.map((t, i) => ({
       id: i, x: t.x, y: t.y, dir: t.d, size: t.s, len: SIZES[t.s].len,
       comps: makeComps(t), hidden: !!t.h, state: LOT, ramp: -1,
@@ -58,7 +67,6 @@ export class Game {
     });
     this.barriers = (level.barriers || []).map((b) => ({ cells: b.cells, n: b.n, open: false }));
     this.ramps = new Array(level.ramps + (opts.extraRamps || 0)).fill(-1);
-    this.belt = new Array(level.belt).fill(-1);
     this.supply = parseSupply(level.supply);
     this.si = 0;
     this.moves = 0;
@@ -73,7 +81,6 @@ export class Game {
     for (const b of this.barriers) for (const [x, y] of b.cells) this.grid[y * this.w + x] = OBST;
     const ev = [];
     this._spawn(ev);
-    if (!this.sandbox) this._refill(ev);
     this._reveal(ev);
     this.startEvents = ev;
   }
@@ -85,11 +92,11 @@ export class Game {
     g.w = this.w;
     g.h = this.h;
     g.sandbox = this.sandbox;
+    g.noEnd = this.noEnd;
     g.trucks = this.trucks.map((t) => ({ ...t, comps: t.comps.map((c) => ({ ...c })) }));
     g.gates = this.gates.map((x) => ({ ...x }));
     g.barriers = this.barriers.map((b) => ({ ...b }));
     g.ramps = this.ramps.slice();
-    g.belt = this.belt.slice();
     g.supply = this.supply; // wird nur von Boni verändert, dann vorher kopiert
     g.si = this.si;
     g.moves = this.moves;
@@ -211,45 +218,39 @@ export class Game {
     return ev;
   }
 
-  // Bonus: Umsortieren. Band + kommender Nachschub werden neu gemischt, Paletten
-  // für die LKWs an den Rampen kommen nach vorne.
+  // Bonus: Umsortieren. Paletten für die LKWs an den Rampen kommen aus der
+  // ganzen Schlange nach vorne, die nächsten anderen werden gemischt.
   useShuffle(seed = 1) {
     if (this.status !== 'playing') return null;
     const rng = makeRng(seed + this.moves * 7919);
-    // Bedarf der geparkten LKWs
     const need = {};
     for (const id of this.ramps) {
       if (id < 0) continue;
       for (const c of this.trucks[id].comps) need[c.color] = (need[c.color] || 0) + c.cap - c.loaded;
     }
-    // Passende Paletten zuerst vom Band, dann aus dem GESAMTEN Nachschub nach vorne holen.
     const front = [];
-    const pick = (code, restArr) => {
+    const rest = [];
+    for (let i = this.si; i < this.supply.length; i++) {
+      const code = this.supply[i];
       const c = colorOf(code);
-      if (need[c] > 0) { need[c]--; front.push(code); } else restArr.push(code);
-    };
-    const beltRest = [];
-    for (const code of this.belt) if (code >= 0) pick(code, beltRest);
-    const supRest = [];
-    for (let i = this.si; i < this.supply.length; i++) pick(this.supply[i], supRest);
-    rng.shuffle(front);
-    // Der Rest von Band + nächsten Nachschub-Paletten wird gemischt, der Rest bleibt in Reihenfolge.
-    const mixN = Math.min(this.belt.length * 3, supRest.length);
-    const mixed = beltRest.concat(supRest.slice(0, mixN));
-    rng.shuffle(mixed);
-    const arranged = front.concat(mixed, supRest.slice(mixN));
-    const beltLen = this.belt.length;
-    const onBelt = Math.min(beltLen, arranged.length);
-    for (let i = 0; i < beltLen; i++) this.belt[i] = i < onBelt ? arranged[i] : -1;
-    // Gleiche Gesamtmenge: Band + Nachschub ab si enthalten genau dieselben Paletten wie vorher.
-    this.supply = this.supply.slice(0, this.si).concat(arranged.slice(onBelt));
-    const ev = [{ type: 'shuffle', belt: this.belt.slice() }];
+      if (need[c] > 0) { need[c]--; front.push(code); } else rest.push(code);
+    }
+    // Nur ganze Viererblöcke mischen, damit gleiche Farben zusammen bleiben
+    const blocks = (arr) => { const out = []; for (let i = 0; i < arr.length; i += 4) out.push(arr.slice(i, i + 4)); return out; };
+    const fb = blocks(front);
+    rng.shuffle(fb);
+    const mixN = Math.min(40, rest.length - (rest.length % 4));
+    const mb = blocks(rest.slice(0, mixN));
+    rng.shuffle(mb);
+    this.supply = this.supply.slice(0, this.si).concat(fb.flat(), mb.flat(), rest.slice(mixN));
+    const ev = [{ type: 'shuffle' }];
     this._resolve(ev);
     this._afterResolve(ev);
     return ev;
   }
 
-  // Bonus: Gabelstapler belädt einen LKW an Rampe r sofort voll.
+  // Bonus: Gabelstapler belädt einen LKW an Rampe r sofort voll
+  // (passende Paletten werden irgendwo aus der Schlange geholt).
   useForklift(r) {
     if (this.status !== 'playing') return null;
     const id = this.ramps[r];
@@ -259,16 +260,6 @@ export class Game {
     const ev = [];
     t.comps.forEach((comp, ci) => {
       let need = comp.cap - comp.loaded;
-      // Erst vom Band (normalerweise leer, da schon alles Passende geladen ist)
-      for (let i = 0; i < this.belt.length && need > 0; i++) {
-        if (this.belt[i] >= 0 && colorOf(this.belt[i]) === comp.color) {
-          this.belt[i] = -1;
-          comp.loaded++;
-          need--;
-          ev.push({ type: 'load', slot: i, ramp: r, comp: ci, color: comp.color, n: comp.loaded });
-        }
-      }
-      // Dann aus dem Nachschub
       let got = 0;
       for (let i = this.supply.length - 1; i >= this.si && need > 0; i--) {
         if (colorOf(this.supply[i]) === comp.color) {
@@ -279,9 +270,10 @@ export class Game {
       }
       if (got) {
         comp.loaded += got;
-        ev.push({ type: 'forkload', ramp: r, comp: ci, color: comp.color, count: got, n: comp.loaded });
+        ev.push({ type: 'forkload', ramp: r, id, comp: ci, color: comp.color, count: got, n: comp.loaded });
       }
     });
+    ev.push({ type: 'requeue' });
     this._resolve(ev);
     this._afterResolve(ev);
     return ev;
@@ -313,21 +305,34 @@ export class Game {
   }
 
   _afterResolve(ev) {
-    this._openBarriers(ev);
-    this._spawn(ev);
-    this._reveal(ev);
+    if (this._settle(ev)) return;
+    if (this.noEnd) return;
     if (this.sandbox) {
       if (this.trucks.every((t) => t.state === GONE)) this.status = 'won';
       return;
     }
+    this._checkEnd(ev);
+  }
+
+  // Schranken, Tore, Planen, Eilaufträge. Liefert true, wenn ein Eilauftrag verpasst wurde.
+  _settle(ev) {
+    this._openBarriers(ev);
+    this._spawn(ev);
+    this._reveal(ev);
+    if (this.sandbox) return false;
     for (const t of this.trucks) {
       if (t.rush && (t.state === LOT || t.state === WAIT) && this.moves >= t.rush) {
         this.status = 'lost';
         ev.push({ type: 'lost', reason: 'rush', id: t.id });
-        return;
+        return true;
       }
     }
-    this._checkEnd(ev);
+    return false;
+  }
+
+  // Vorderste Palette der Schlange (oder -1, wenn leer).
+  front() {
+    return this.si < this.supply.length ? this.supply[this.si] : -1;
   }
 
   // Drehscheiben drehen sich nach jedem Zug um 90° im Uhrzeigersinn (falls Platz).
@@ -401,36 +406,26 @@ export class Game {
     }
   }
 
-  // Beladen, Abfahren, Nachfüllen, so lange sich etwas tut.
+  // Beladen und Abfahren: Die vorderste Palette geht in einen passenden LKW,
+  // so lange das klappt. Ein voller LKW fährt sofort ab.
   _resolve(ev) {
-    let progress = true;
-    while (progress) {
-      progress = false;
-      for (let i = 0; i < this.belt.length; i++) {
-        const code = this.belt[i];
-        if (code < 0) continue;
-        const c = colorOf(code);
-        const tg = this._findTarget(c);
-        if (!tg) continue;
-        tg.comp.loaded++;
-        this.belt[i] = -1;
-        progress = true;
-        ev.push({ type: 'load', slot: i, ramp: tg.r, comp: tg.ci, color: c, n: tg.comp.loaded });
+    while (this.si < this.supply.length) {
+      const code = this.supply[this.si];
+      const c = colorOf(code);
+      const tg = this._findTarget(c);
+      if (!tg) break;
+      tg.comp.loaded++;
+      const id = this.ramps[tg.r];
+      ev.push({ type: 'load', q: this.si, code, ramp: tg.r, id, comp: tg.ci, color: c, n: tg.comp.loaded });
+      this.si++;
+      const t = this.trucks[id];
+      if (t.comps.every((cp) => cp.loaded >= cp.cap)) {
+        this.ramps[tg.r] = -1;
+        t.state = GONE;
+        t.ramp = -1;
+        this.departed++;
+        ev.push({ type: 'depart', ramp: tg.r, id });
       }
-      for (let r = 0; r < this.ramps.length; r++) {
-        const id = this.ramps[r];
-        if (id < 0) continue;
-        const t = this.trucks[id];
-        if (t.comps.every((c) => c.loaded >= c.cap)) {
-          this.ramps[r] = -1;
-          t.state = GONE;
-          t.ramp = -1;
-          this.departed++;
-          ev.push({ type: 'depart', ramp: r, id });
-          progress = true;
-        }
-      }
-      if (this._refill(ev)) progress = true;
     }
   }
 
@@ -455,25 +450,14 @@ export class Game {
     return best;
   }
 
-  _refill(ev) {
-    let any = false;
-    for (let i = 0; i < this.belt.length; i++) {
-      if (this.belt[i] < 0 && this.si < this.supply.length) {
-        const c = this.supply[this.si++];
-        this.belt[i] = c;
-        ev.push({ type: 'refill', slot: i, color: c });
-        any = true;
-      }
-    }
-    return any;
-  }
-
   _checkEnd(ev) {
     if (this.trucks.every((t) => t.state === GONE)) {
       this.status = 'won';
       ev.push({ type: 'won' });
       return;
     }
+    // Nichts geht mehr: kein LKW kann losfahren (Rampen voll oder alle blockiert),
+    // und die vorderste Palette passt zu keinem geparkten LKW.
     if (this.legalMoves().length === 0) {
       this.status = 'lost';
       ev.push({ type: 'lost', reason: this.freeRampCount() === 0 ? 'ramps' : 'stuck' });

@@ -7,15 +7,24 @@ import { makeRng } from './rng.js';
 
 const LIMIT = Symbol('limit');
 
-// Bewertet einen Zug: Wie viele Paletten seiner Farbe liegen schon auf dem Band?
-// Und wie viele LKWs hängen hinter ihm fest?
+// Bewertet einen Zug: Wie bald und wie viele Paletten seiner Farbe kommen in der
+// Schlange? Die vorderste zählt am meisten. Dazu: wie viele LKWs hängen hinter ihm?
+const LOOK = 24;
 function moveScore(g, id, dependents) {
   const t = g.trucks[id];
   let s = 0;
   for (const comp of t.comps) {
-    let onBelt = 0;
-    for (const b of g.belt) if (b >= 0 && (b & 15) === comp.color) onBelt++;
-    s += Math.min(onBelt, comp.cap) / comp.cap;
+    let w = 0;
+    let n = 0;
+    const end = Math.min(g.supply.length, g.si + LOOK);
+    for (let i = g.si; i < end && n < comp.cap; i++) {
+      if ((g.supply[i] & 15) === comp.color) {
+        w += 1 - (i - g.si) / LOOK;
+        n++;
+      }
+    }
+    if (g.si < g.supply.length && (g.supply[g.si] & 15) === comp.color) w += 3;
+    s += w / Math.sqrt(comp.cap);
   }
   // Eilaufträge zuerst, wenn es knapp wird
   if (t.rush) s += Math.max(0, 6 - (t.rush - g.moves)) * 2;

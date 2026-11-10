@@ -1,6 +1,6 @@
 import { LEVEL_PLAN } from '../js/data/levelplan.js';
-import { findLevel, fairStartRatio } from '../js/core/generator.js';
-import { solve, playoutRate } from '../js/core/solver.js';
+import { findLevel, replaySolution } from '../js/core/generator.js';
+import { playoutRate } from '../js/core/solver.js';
 import { validateLevel } from '../js/core/model.js';
 
 const $ = (s) => document.querySelector(s);
@@ -60,7 +60,7 @@ async function generate(from = 1, to = LEVEL_PLAN.length) {
       continue;
     }
     levels[i] = { id: i + 1, ...res.level };
-    row(i, levels[i], res.seed, res.stats.fair, res.stats.rate, res.stats.nodes, true, `${ms} ms`);
+    row(i, levels[i], res.seed, levels[i].w + '×' + levels[i].h + ' ' + (p.shape || '') + ' ' + (p.angle || 0) + '°', res.stats.rate, res.stats.moves, true, `${ms} ms`);
   }
   const failed = window.genFailed.length;
   log(failed ? `Fehlgeschlagen: ${window.genFailed.join(', ')}` : 'Alle OK.');
@@ -73,7 +73,7 @@ async function save() {
   if (out.length !== levels.length) { log('Lücken im Bestand, nicht gespeichert.'); return; }
   const lines = out.map((l) => '  ' + JSON.stringify(l));
   const body = '// AUTOMATISCH ERZEUGT von tools/levelgen.html – nicht von Hand bearbeiten.\n'
-    + '// Jedes Level wurde vom Solver als lösbar ohne Boni bestätigt.\n'
+    + '// Jedes Level enthält eine nachgespielte Lösung (sol), lösbar ohne Boni.\n'
     + 'export const LEVELS = [\n' + lines.join(',\n') + '\n];\n';
   const r = await fetch('/__save?file=levels.js', { method: 'POST', body });
   log(r.ok ? `Gespeichert: ${out.length} Level` : 'Speichern fehlgeschlagen: ' + r.status);
@@ -90,12 +90,11 @@ async function check() {
     await pause();
     const lv = LEVELS[i];
     const errs = validateLevel(lv);
-    const sol = solve(lv, { maxNodes: 300000 });
-    const fair = fairStartRatio(lv).toFixed(2);
-    const rate = playoutRate(lv, 150, 7).toFixed(2);
-    const ok = !errs.length && sol.solvable;
+    const solved = replaySolution(lv);
+    const rate = playoutRate(lv, 100, 7).toFixed(2);
+    const ok = !errs.length && solved;
     if (!ok) bad.push(i + 1);
-    row(i, lv, '-', fair, rate, sol.nodes, ok, errs.join('; ') + (sol.limit ? ' Solver-Limit' : ''));
+    row(i, lv, '-', lv.w + '×' + lv.h + ' ' + (lv.angle || 0) + '°', rate, lv.sol ? lv.sol.length : '-', ok, errs.join('; ') + (solved ? '' : ' Lösung geht nicht auf'));
     window.checkProgress = `${i + 1}/${LEVELS.length}`;
   }
   log(bad.length ? `NICHT ok: ${bad.join(', ')}` : `Alle ${LEVELS.length} Level lösbar.`);

@@ -17,7 +17,7 @@ export function defaultSave() {
     level: 1,          // nächstes zu spielendes Level
     maxLevel: 1,       // höchstes freigeschaltetes Level
     coins: 0,
-    levels: {},        // { [id]: { won: true, fails: 0, best: moves } }
+    levels: {},        // { [id]: { won: true, fails: 0, best: moves, stars: 1-3 } }
     boosters: {
       ramp: { unlocked: false, count: 0 },
       shuffle: { unlocked: false, count: 0 },
@@ -33,6 +33,7 @@ export function defaultSave() {
     },
     stats: { played: 0, won: 0, lost: 0, boostersUsed: 0 },
     seenTips: {},      // bereits gezeigte Erklärungen (Mechaniken, Boni)
+    daily: { last: '', streak: 0 }, // tägliche Belohnung: letzter Tag (YYYY-MM-DD), Serie
   };
 }
 

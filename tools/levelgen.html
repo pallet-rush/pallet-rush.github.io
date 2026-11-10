@@ -15,14 +15,14 @@
 </head>
 <body>
 <h1>Level-Generator &amp; Prüfung</h1>
-<p>„Generieren“ baut alle Level aus <code>js/data/levelplan.js</code> neu und prüft sie mit dem Solver.
+<p>„Generieren“ baut alle Level aus <code>js/data/levelplan.js</code> neu und prüft sie (Lösung nachspielen, simulierte Spieler).
 „Bestehende prüfen“ verifiziert <code>js/data/levels.js</code>. Speichern funktioniert nur mit <code>tools/devserver.py</code>.</p>
 Level <input id="from" type="number" value="1" style="width:60px"> bis <input id="to" type="number" value="100" style="width:60px">
 <button id="gen">Generieren</button>
 <button id="save" disabled>Speichern nach js/data/levels.js</button>
 <button id="check">Bestehende prüfen</button>
 <div id="log"></div>
-<table id="tbl"><thead><tr><th>Level</th><th>LKWs</th><th>Paletten</th><th>Seed</th><th>Fairer Start</th><th>Erfolgsquote</th><th>Solver-Knoten</th><th>Mechaniken</th><th>Status</th></tr></thead><tbody></tbody></table>
+<table id="tbl"><thead><tr><th>Level</th><th>LKWs</th><th>Paletten</th><th>Seed</th><th>Form</th><th>Erfolgsquote</th><th>Züge</th><th>Mechaniken</th><th>Status</th></tr></thead><tbody></tbody></table>
 <script type="module" src="levelgen.js"></script>
 </body>
 </html>

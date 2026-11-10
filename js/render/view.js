@@ -1,33 +1,133 @@
-// Spielansicht: Layout, Animationen und Eingabe.
+// Spielansicht: Layout, Szene, Verkehr, Animationen und Eingabe.
 // Die Logik (model.js) ist immer schon fertig gerechnet. Die Ansicht spielt die
-// gelieferten Ereignisse zeitlich gestaffelt als Animation ab.
+// gelieferten Ereignisse als Animation ab und hält dabei die Reihenfolge ein:
+//  - Paletten verlassen die Schlange streng der Reihe nach,
+//  - eine Palette startet erst, wenn ihr LKW wirklich an der Rampe steht,
+//  - ein LKW fährt erst ab, wenn seine letzte Palette gelandet ist.
 //
-// Aufbau von oben nach unten:
-//   Halle mit zwei Zulieferbändern (zeigen die nächsten Paletten)
-//   vorderes Förderband (nur von hier wird geladen)
-//   Laderampen
-//   Straße + Hof mit den LKWs
-//   Bonus-Leiste (HTML)
+// Aufbau (virtuelle Breite 390, Hochformat), von oben nach unten:
+//   Halle mit zwei Toren → zwei gerade Zulieferbänder → rundes Förderband
+//   → Weiche → Ladestation → Rollenbahn an den Rampen → Parkbuchten
+//   → Ringstraße (Einbahn im Uhrzeigersinn) → Stau im Inneren des Rings.
+//
+// Verkehr: Jeder fahrende LKW folgt einem geglätteten Pfad. Vor jedem Schritt
+// prüft er, ob sein Umriss ein Stück weiter vorne einen anderen LKW berührt,
+// und wartet dann. Wer zuerst losgefahren ist, hat Vorfahrt; so gibt es weder
+// Zusammenstöße noch Verklemmungen. In eine Bucht setzt ein LKW erst zurück,
+// wenn sie wirklich frei ist.
 
-import { COLORS, DIRS, CLOCKWISE } from '../core/constants.js';
-import { drawTruck, drawPallet, bedSlotLocal, rr, shade, badge, padlock, keyIcon } from './draw.js';
+import { COLORS, DIRS, SIZES, COVER, LOT, WAIT, GONE } from '../core/constants.js';
+import { t as tr } from '../i18n.js';
+import { drawVehicle, drawPallet, vehicleSlot, vehicleLength, vehicleWidth } from './vehicles.js';
+import * as P from './props.js';
 import { sfx, vibrate } from '../audio.js';
 
-const LW = 400; // logische Breite
+const VW = 390;
 const DIR_ANGLE = { R: 0, D: Math.PI / 2, L: Math.PI, U: -Math.PI / 2 };
-const DOCK_LEN = { S: 62, M: 92, L: 116, T: 116 };
-const SPEED = 0.62; // px pro ms
-const BELT_SPEED = 0.000016; // Umdrehungen pro ms
-const FEED_GAP = 22; // Abstand der Paletten auf den Zulieferbändern
-const FEED_SHOW = 7; // sichtbare Paletten pro Zulieferband
+const LOT_K = 0.77;      // Maßstab der LKWs im Hof relativ zum Raster (Abstand zueinander)
+const ROAD_W = 30;
+const CORNER = 26;
+const REV_R = 30; // Radius beim Rückwärts-Einparken
+const PALLET = 12; // Palettengröße auf den Bändern
+const GAP = 18; // (alt) Abstand der Paletten auf einer Spur
+const COLS = 4; // Paletten nebeneinander auf einem Band
+const COL_GAP = 13.5; // Querabstand der Spalten
+const ROW_GAP = 15; // Abstand der Reihen
+const BELT_W = 60; // Breite der Zulieferbänder
+const VMAX = 0.5; // px/ms vorwärts
+const VREV = 0.16; // px/ms rückwärts
+const ACC = 0.0012; // px/ms²
+const LOAD_EVERY = 90; // ms zwischen zwei Paletten
 
-const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+const TAU = Math.PI * 2;
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
+const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 function lerpAngle(a, b, t) {
   let d = b - a;
-  while (d > Math.PI) d -= Math.PI * 2;
-  while (d < -Math.PI) d += Math.PI * 2;
+  while (d > Math.PI) d -= TAU;
+  while (d < -Math.PI) d += TAU;
   return a + d * t;
+}
+
+// ---------- Pfade mit abgerundeten Ecken ----------
+function makePath(pts, radius = 18) {
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length - 1; i++) {
+    const A = pts[i - 1];
+    const B = pts[i];
+    const C = pts[i + 1];
+    const l1 = Math.hypot(B.x - A.x, B.y - A.y);
+    const l2 = Math.hypot(C.x - B.x, C.y - B.y);
+    if (l1 < 0.01 || l2 < 0.01) continue;
+    const d1 = { x: (B.x - A.x) / l1, y: (B.y - A.y) / l1 };
+    const d2 = { x: (C.x - B.x) / l2, y: (C.y - B.y) / l2 };
+    const cos = clamp(d1.x * d2.x + d1.y * d2.y, -1, 1);
+    const th = Math.acos(cos);
+    if (th < 0.02) { out.push(B); continue; }
+    const cut = Math.min(radius * Math.tan(th / 2), l1 * 0.5, l2 * 0.5);
+    const p0 = { x: B.x - d1.x * cut, y: B.y - d1.y * cut };
+    const p1 = { x: B.x + d2.x * cut, y: B.y + d2.y * cut };
+    const n = Math.max(4, Math.ceil(th * 8));
+    for (let k = 0; k <= n; k++) {
+      const t = k / n;
+      const u = 1 - t;
+      out.push({ x: u * u * p0.x + 2 * u * t * B.x + t * t * p1.x, y: u * u * p0.y + 2 * u * t * B.y + t * t * p1.y });
+    }
+  }
+  out.push(pts[pts.length - 1]);
+  const s = [0];
+  for (let i = 1; i < out.length; i++) s.push(s[i - 1] + Math.hypot(out[i].x - out[i - 1].x, out[i].y - out[i - 1].y));
+  const length = s[s.length - 1];
+  return {
+    pts: out,
+    s,
+    length,
+    at(d) {
+      d = clamp(d, 0, length);
+      let lo = 0;
+      let hi = s.length - 1;
+      while (hi - lo > 1) {
+        const m = (lo + hi) >> 1;
+        if (s[m] <= d) lo = m; else hi = m;
+      }
+      const A = out[lo];
+      const B = out[hi];
+      const seg = s[hi] - s[lo] || 1;
+      const t = (d - s[lo]) / seg;
+      return { x: A.x + (B.x - A.x) * t, y: A.y + (B.y - A.y) * t, a: Math.atan2(B.y - A.y, B.x - A.x) };
+    },
+  };
+}
+
+// ---------- Rechteck-Kollision (SAT) ----------
+function corners(x, y, a, l, w) {
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  const hl = l / 2;
+  const hw = w / 2;
+  return [
+    [x + c * hl - s * hw, y + s * hl + c * hw],
+    [x + c * hl + s * hw, y + s * hl - c * hw],
+    [x - c * hl + s * hw, y - s * hl - c * hw],
+    [x - c * hl - s * hw, y - s * hl + c * hw],
+  ];
+}
+function overlap(A, B) {
+  for (const poly of [A, B]) {
+    for (let i = 0; i < 4; i++) {
+      const p = poly[i];
+      const q = poly[(i + 1) % 4];
+      const nx = q[1] - p[1];
+      const ny = p[0] - q[0];
+      let a0 = Infinity; let a1 = -Infinity; let b0 = Infinity; let b1 = -Infinity;
+      for (const v of A) { const d = v[0] * nx + v[1] * ny; if (d < a0) a0 = d; if (d > a1) a1 = d; }
+      for (const v of B) { const d = v[0] * nx + v[1] * ny; if (d < b0) b0 = d; if (d > b1) b1 = d; }
+      if (a1 < b0 || b1 < a0) return false;
+    }
+  }
+  return true;
 }
 
 export class GameView {
@@ -38,19 +138,44 @@ export class GameView {
     this.game = null;
     this.symbols = false;
     this.insets = { top: 60, bottom: 90 };
-    this.tasks = [];
-    this.flying = [];
-    this.puffs = [];
-    this.idleCbs = [];
     this.select = null; // 'truck' | 'dock' während ein Bonus ein Ziel braucht
+    this.idleCbs = [];
+    this.timers = [];
+    this.demoLevel = null;
+    this.last = performance.now();
     canvas.addEventListener('pointerdown', (e) => this.onPointer(e));
     window.addEventListener('resize', () => this.resize());
+    this.resetState();
     this.resize();
     const loop = (t) => {
       this.frame(t);
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
+  }
+
+  resetState() {
+    this.tvs = [];
+    this.loads = []; // wartende Lade-Ereignisse (in Reihenfolge)
+    this.flights = []; // fliegende Paletten
+    this.fx = []; // Staubwolken, Funken, Häkchen, Konfetti, Lob-Texte
+    this.shakeT = 0; this.shakeA = 0; // Bildschirmwackeln
+    this.combo = 0; this.lastFull = 0;
+    this.forklifts = [];
+    this.cranes = [];
+    this.endEv = null;
+    this.order = 0;
+    this.shownSi = 0;
+    this.qHead = 0;
+    this.nextLoadAt = 0;
+    this.beltPhase = 0;
+    this.dockPhase = 0;
+    this.popAt = -1e9;
+    this.bayOcc = [];
+    this.barrierAnim = [];
+    this.rampFlash = -1e9;
+    this.lotDirty = true;
+    this.pulse = 0;
   }
 
   setInsets(top, bottom) {
@@ -65,1113 +190,1386 @@ export class GameView {
     this.canvas.width = Math.round(cw * dpr);
     this.canvas.height = Math.round(ch * dpr);
     this.dpr = dpr;
-    this.scale = Math.min(cw / LW, ch / 760);
-    this.offX = (cw - LW * this.scale) / 2;
-    this.LH = ch / this.scale;
+    this.cw = cw;
+    this.ch = ch;
+    // Breite füllen; wird es zu niedrig, nach Höhe skalieren (Ränder mit Rasen)
+    let scale = cw / VW;
+    const need = 760; // Mindesthöhe der Szene in virtuellen Einheiten (ohne Leisten)
+    const avail = (ch - this.insets.top - this.insets.bottom) / scale;
+    if (avail < need - 120) scale = (ch - this.insets.top - this.insets.bottom) / (need - 120);
+    this.scale = scale;
+    this.offX = (cw - VW * scale) / 2;
+    this.VH = ch / scale;
     this.layout();
   }
 
+  // ---------- Layout ----------
   layout() {
-    const top = this.insets.top / this.scale + 2;
-    const bottom = this.insets.bottom / this.scale;
-    const feedY = top + 18;
-    const belt = { x: 20, y: feedY + 20, w: LW - 40, h: 100 };
-    belt.r = belt.h / 2;
-    const dockY = belt.y + belt.h + 16;
-    const dockH = DOCK_LEN.L + 8;
-    const roadY = dockY + dockH + 14;
-    const L = { top, feedY, belt, dockY, dockH, roadY };
-    L.feedHeads = [[LW / 2 - 40, feedY], [LW / 2 + 40, feedY]];
-    if (this.game) {
-      const g = this.game;
-      const ringGap = 16;
-      const lotTop = roadY + ringGap;
-      const availH = this.LH - bottom - lotTop - ringGap - 8;
-      const cell = Math.max(24, Math.min((LW - 2 * (ringGap + 22)) / g.w, availH / g.h, 50));
-      const lotW = cell * g.w;
-      const lotH = cell * g.h;
-      L.cell = cell;
-      L.lot = { x: (LW - lotW) / 2, y: lotTop, w: lotW, h: lotH };
-      L.ring = { x: L.lot.x - ringGap, y: roadY, x2: L.lot.x + lotW + ringGap, y2: lotTop + lotH + ringGap };
-      const n = g.ramps.length;
-      const spacing = Math.min(66, (LW - 30) / n);
-      L.dockW = Math.min(40, spacing - 14);
-      L.dockSpacing = spacing;
-      L.docks = [];
-      for (let i = 0; i < n; i++) L.docks.push(LW / 2 + (i - (n - 1) / 2) * spacing);
+    const s = this.scale;
+    const T = this.insets.top / s + 2;
+    const B = this.VH - this.insets.bottom / s;
+    const L = { T, B };
+    L.hall = { y: T - 4, h: 50 };
+    const gateY = T + 42;
+    L.gateY = gateY;
+    L.ell = { cx: VW / 2, cy: T + 112, rx: 85, ry: 58 };
+    const { cx, cy, rx, ry } = L.ell;
+    L.M = { x: cx, y: cy + ry };
+    L.S = { x: cx, y: cy + ry + 20 };
+    L.D = L.S.y + 24; // Rollenbahn
+    L.wallY = L.D + 8;
+    L.bayTop = L.D + 18;
+    L.bayH = 116;
+    L.RY = L.bayTop + L.bayH + 17; // Mittellinie obere Ringstraße
+    L.RB = Math.max(L.RY + 250, B - ROAD_W / 2 - 6);
+    L.ring = { x: 22, y: L.RY, w: VW - 44, h: L.RB - L.RY };
+    L.x1 = 22;
+    L.x2 = VW - 22;
+    // Zulieferspuren: Tor → gerade nach unten → unterer Ellipsenbogen → Weiche → Station
+    L.lanes = [0, 1].map((side) => {
+      const x = side === 0 ? cx - rx : cx + rx;
+      const pts = [{ x, y: gateY - 10 }, { x, y: cy }];
+      const arc = side === 0 ? P.arcPoints(cx, cy, rx, ry, Math.PI, Math.PI / 2, 28) : P.arcPoints(cx, cy, rx, ry, 0, Math.PI / 2, 28);
+      for (const p of arc.slice(1)) pts.push(p);
+      pts.push(L.S);
+      return makePath(pts, 4);
+    });
+    // Rampen / Buchten
+    const n = this.game ? this.game.ramps.length : 4;
+    L.nBays = n;
+    L.bayW = (VW - 60) / n;
+    L.bays = [];
+    for (let i = 0; i < n; i++) L.bays.push(30 + (i + 0.5) * L.bayW);
+    L.cd = Math.min(22, (L.bayH - 6) / 5.15); // Fahrzeug-Maßstab an den Rampen
+    L.slotW = Math.min(L.bayW - 8, L.cd * 0.84 + 16); // sichtbare Buchtbreite: knapp LKW-Breite
+    // Hof (Stau) im Inneren des Rings
+    const inner = { x: L.x1 + ROAD_W / 2 + 8, y: L.RY + ROAD_W / 2 + 8, x2: L.x2 - ROAD_W / 2 - 8, y2: L.RB - ROAD_W / 2 - 8 };
+    L.inner = inner;
+    L.lotC = { x: (inner.x + inner.x2) / 2, y: (inner.y + inner.y2) / 2 };
+    const g = this.game || this.demo;
+    if (g) {
+      const ang = ((g.level.angle || 0) * Math.PI) / 180;
+      L.ang = ang;
+      const ca = Math.cos(ang);
+      const sa = Math.sin(ang);
+      // Ausdehnung aller belegbaren Felder (LKWs, Tore, Schranken) auf dem Bildschirm
+      let mx = 0.5;
+      let my = 0.5;
+      const cells = [];
+      for (const t of g.trucks) if (t.state === LOT || t.state === WAIT) for (const c of g.cells(t)) cells.push(c);
+      for (const gt of g.gates) cells.push([gt.x, gt.y]);
+      for (const b of g.barriers) for (const c of b.cells) cells.push(c);
+      const ext = (Math.abs(ca) + Math.abs(sa)) / 2;
+      for (const [x, y] of cells) {
+        const gx = x + 0.5 - g.w / 2;
+        const gy = y + 0.5 - g.h / 2;
+        mx = Math.max(mx, Math.abs(gx * ca - gy * sa) + ext);
+        my = Math.max(my, Math.abs(gx * sa + gy * ca) + ext);
+      }
+      const iw = inner.x2 - inner.x;
+      const ih = inner.y2 - inner.y;
+      L.cl = Math.min(30, iw / (2 * mx), ih / (2 * my));
+      L.ca = ca;
+      L.sa = sa;
     }
     this.L = L;
-    if (this.game) this.placeStatic();
+    this.sceneDirty = true;
+    this.lotDirty = true;
+    for (const tv of this.tvs) if (tv.state === 'lot') this.placeLot(tv);
+  }
+
+  // Feld (Raster) → Bildschirm (virtuell)
+  gridToScreen(gx, gy) {
+    const L = this.L;
+    const g = this.game || this.demo;
+    const x = (gx - g.w / 2) * L.cl;
+    const y = (gy - g.h / 2) * L.cl;
+    return { x: L.lotC.x + x * L.ca - y * L.sa, y: L.lotC.y + x * L.sa + y * L.ca };
+  }
+  screenToGrid(x, y) {
+    const L = this.L;
+    const g = this.game || this.demo;
+    const dx = x - L.lotC.x;
+    const dy = y - L.lotC.y;
+    return { gx: (dx * L.ca + dy * L.sa) / L.cl + g.w / 2, gy: (-dx * L.sa + dy * L.ca) / L.cl + g.h / 2 };
+  }
+  truckPose(t) {
+    // Mitte des LKWs: Kopf-Feld minus halbe Länge
+    const [dx, dy] = DIRS[t.dir];
+    const hx = t.x + 0.5 - dx * (t.len - 1) / 2;
+    const hy = t.y + 0.5 - dy * (t.len - 1) / 2;
+    const p = this.gridToScreen(hx, hy);
+    return { x: p.x, y: p.y, a: DIR_ANGLE[t.dir] + this.L.ang };
+  }
+  placeLot(tv) {
+    const p = this.truckPose(tv.t);
+    tv.x = p.x;
+    tv.y = p.y;
+    tv.a = p.a;
+    tv.cell = this.L.cl * LOT_K; // etwas kleiner als das Raster: LKWs berühren sich nie
   }
 
   // ---------- Spiel setzen ----------
   setGame(game, { symbols = false } = {}) {
     this.game = game;
     this.symbols = symbols;
-    this.tasks = [];
-    this.flying = [];
-    this.puffs = [];
+    this.resetState();
+    this.timers = [];
     this.idleCbs = [];
-    this.select = null;
-    if (!game) return;
-    this.now = performance.now();
-    this.beltT0 = this.now;
-    this.beltView = game.belt.slice();
-    this.vsiPlanned = game.si;
-    this.feedTaken = new Set();
-    for (let i = 0; i < game.si; i++) this.feedTaken.add(i);
-    this.feedShift = [0, 0];
-    this.chainNo = {};
-    let cn = 0;
-    this.trucks = game.trucks.map((t) => {
-      if (t.lock >= 0) { this.chainNo[t.id] = ++cn; this.chainNo['k' + t.lock] = this.chainNo['k' + t.lock] || cn; }
-      return {
-        id: t.id, len: t.len, size: t.size, dir: t.dir,
-        comps: t.comps.map((c) => ({ ...c })),
-        hidden: t.hidden, mode: t.state === 3 ? 'wait' : 'lot',
-        kf: [], doorT0: 0, fullT: 0, flashT: 0, revealT: 0,
-        rush: t.rush, lock: t.lock, tt: t.tt,
-      };
-    });
-    // Drehpunkte merken (bleiben sichtbar, auch wenn der LKW weg ist)
-    this.turntables = game.trucks.filter((t) => t.tt).map((t) => {
-      const [dx, dy] = DIRS[t.dir];
-      return { x: t.x - dx * (t.len - 1), y: t.y - dy * (t.len - 1) };
-    });
-    this.gateView = game.gates.map((g) => ({ left: g.queue.length - g.next }));
-    this.barrierView = game.barriers.map((b) => ({ open: b.open, openT: 0 }));
-    const n = game.ramps.length;
-    this.dockFreeAt = new Array(n).fill(0);
-    this.dockReadyAt = new Array(n).fill(0);
-    this.dockCursor = new Array(n).fill(0);
-    this.dockLanded = new Array(n).fill(0);
-    this.dockTruck = new Array(n).fill(-1);
-    this.slotTime = new Array(game.belt.length).fill(0);
-    this.busyUntil = 0;
-    this.layout();
-  }
-
-  lotCenter(t) {
-    const { lot, cell } = this.L;
-    const [dx, dy] = DIRS[t.dir];
-    const tailX = t.x - dx * (t.len - 1);
-    const tailY = t.y - dy * (t.len - 1);
-    return [lot.x + ((t.x + tailX) / 2 + 0.5) * cell, lot.y + ((t.y + tailY) / 2 + 0.5) * cell];
-  }
-
-  cellCenter(x, y) {
-    const { lot, cell } = this.L;
-    return [lot.x + (x + 0.5) * cell, lot.y + (y + 0.5) * cell];
-  }
-
-  lotDims(tv) {
-    return [tv.len * this.L.cell - 6, this.L.cell * 0.74];
-  }
-
-  dockDims(tv) {
-    return [DOCK_LEN[tv.size], this.L.dockW];
-  }
-
-  dockPos(tv, r) {
-    const [Lw] = this.dockDims(tv);
-    return [this.L.docks[r], this.L.dockY + Lw / 2 + 4];
-  }
-
-  // Positionen aller ruhenden LKWs neu setzen (nach Layout-Wechsel).
-  placeStatic() {
-    for (const tv of this.trucks) {
-      const t = this.game.trucks[tv.id];
-      if (tv.mode === 'lot') {
-        const [x, y] = this.lotCenter(t);
-        tv.kf = [{ t: 0, x, y, a: DIR_ANGLE[t.dir], s: 0 }];
-      } else if (tv.mode === 'dock' && tv.dock !== undefined) {
-        const [x, y] = this.dockPos(tv, tv.dock);
-        tv.kf = [{ t: 0, x, y, a: Math.PI / 2, s: 1 }];
-      }
+    if (!game) {
+      this.startDemo();
+      return;
     }
+    this.demo = null;
+    this.layout();
+    this.initTrucks(game);
+    this.shownSi = game.si;
+    this.qHead = game.si;
+    if (game.startEvents?.length) this.play(game.startEvents.filter((e) => e.type !== 'spawn' && e.type !== 'reveal'));
   }
 
-  // ---------- Zeitplanung ----------
-  schedule(t, fn) {
-    this.tasks.push({ t, fn });
-    this.tasks.sort((a, b) => a.t - b.t);
-    if (t > this.busyUntil) this.busyUntil = t;
+  initTrucks(g) {
+    this.tvs = g.trucks.map((t) => {
+      const tv = {
+        id: t.id, t, size: t.size, state: t.state === WAIT ? 'wait' : 'lot', len: 0, cell: 0,
+        x: 0, y: 0, a: 0, v: 0, vis: t.comps.map(() => 0), pending: 0, hidden: t.hidden,
+        flash: -1e9, nudge: null, squash: -1e9, alpha: 1, order: 0,
+      };
+      if (tv.state === 'lot') this.placeLot(tv);
+      return tv;
+    });
+    this.bayOcc = new Array(g.ramps.length).fill(null);
+    this.barrierAnim = g.barriers.map(() => -1);
+    this.lotDirty = true;
   }
 
+  // Menü: im Hintergrund spielt ein Level von selbst (Lösung aus den Leveldaten).
+  setDemo(level) {
+    this.demoLevel = level;
+    if (!this.game) this.startDemo();
+  }
+  async startDemo() {
+    this.demo = null;
+    if (!this.demoLevel) { this.layout(); return; }
+    const { Game } = await import('../core/model.js');
+    if (this.game) return;
+    this.resetState();
+    this.demo = new Game(this.demoLevel);
+    this.demoStep = 0;
+    this.demoNext = performance.now() + 1500;
+    this.layout();
+    this.initTrucks(this.demo);
+  }
+  demoTick(now) {
+    const g = this.demo;
+    if (!g || now < this.demoNext) return;
+    if (g.status !== 'playing') {
+      if (this.isIdle()) this.startDemo();
+      return;
+    }
+    const sol = g.level.sol || [];
+    if (!this.canDispatch() || this.loads.length > 6) { this.demoNext = now + 300; return; }
+    const id = sol[this.demoStep];
+    if (id === undefined) return;
+    const r = g.tap(id);
+    if (r.ok) { this.demoStep++; this.play(r.events, true); }
+    this.demoNext = now + 1100;
+  }
+
+  // ---------- Zeitsteuerung ----------
+  after(ms, fn) {
+    this.timers.push({ at: performance.now() + ms, fn });
+  }
   isIdle() {
-    return this.tasks.length === 0 && this.flying.length === 0;
+    if (this.timers.length || this.loads.length || this.flights.length || this.forklifts.length || this.cranes.length) return false;
+    for (const tv of this.tvs) {
+      if (tv.state === 'drive' || tv.state === 'leave' || tv.state === 'crane' || tv.state === 'spawn' || tv.state === 'rotate') return false;
+      if (tv.pendingDepart) return false;
+    }
+    return true;
   }
-
   whenIdle(fn) {
     if (this.isIdle()) fn();
     else this.idleCbs.push(fn);
   }
 
-  // ---------- Pfade ----------
-  pathKf(points, t0, s0, s1) {
-    const kf = [];
-    let t = t0;
-    let total = 0;
-    for (let i = 1; i < points.length; i++) total += Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]);
-    total = total || 1;
-    let done = 0;
-    const a0 = Math.atan2(points[1][1] - points[0][1], points[1][0] - points[0][0]);
-    kf.push({ t, x: points[0][0], y: points[0][1], a: a0, s: s0 });
-    for (let i = 1; i < points.length; i++) {
-      const [px, py] = points[i - 1];
-      const [qx, qy] = points[i];
-      const seg = Math.hypot(qx - px, qy - py);
-      if (seg < 0.01) continue;
-      const a = Math.atan2(qy - py, qx - px);
-      const isCorner = i < points.length - 1;
-      const r = isCorner ? Math.min(16, seg / 2) : 0;
-      const ux = (qx - px) / seg;
-      const uy = (qy - py) / seg;
-      done += seg - r;
-      t += (seg - r) / SPEED;
-      kf.push({ t, x: qx - ux * r, y: qy - uy * r, a, s: lerp(s0, s1, done / total) });
-      if (isCorner) {
-        const [nx, ny] = points[i + 1];
-        const nseg = Math.hypot(nx - qx, ny - qy) || 1;
-        const r2 = Math.min(16, nseg / 2);
-        const na = Math.atan2(ny - qy, nx - qx);
-        done += r + r2;
-        t += (r + r2) / SPEED;
-        const p2 = [qx + ((nx - qx) / nseg) * r2, qy + ((ny - qy) / nseg) * r2];
-        kf.push({ t, x: p2[0], y: p2[1], a: na, s: lerp(s0, s1, Math.min(1, done / total)) });
-        points[i] = p2;
-      }
-    }
-    return { kf, t };
-  }
-
-  ringPerimeterPoints(from, to) {
-    const R = this.L.ring;
-    const corners = [[R.x, R.y], [R.x2, R.y], [R.x2, R.y2], [R.x, R.y2]];
-    const W = R.x2 - R.x;
-    const H = R.y2 - R.y;
-    const per = 2 * (W + H);
-    const param = ([x, y]) => {
-      if (Math.abs(y - R.y) < 0.5) return x - R.x;
-      if (Math.abs(x - R.x2) < 0.5) return W + (y - R.y);
-      if (Math.abs(y - R.y2) < 0.5) return W + H + (R.x2 - x);
-      return 2 * W + H + (R.y2 - y);
-    };
-    const cornerParam = [0, W, W + H, 2 * W + H];
-    const a = param(from);
-    const b = param(to);
-    const fwd = (b - a + per) % per;
-    const pts = [];
-    if (fwd <= per - fwd) {
-      for (let c = 0; c < 4; c++) {
-        const d = (cornerParam[c] - a + per) % per;
-        if (d > 0.5 && d < fwd - 0.5) pts.push({ d, p: corners[c] });
-      }
-    } else {
-      const bwd = per - fwd;
-      for (let c = 0; c < 4; c++) {
-        const d = (a - cornerParam[c] + per) % per;
-        if (d > 0.5 && d < bwd - 0.5) pts.push({ d, p: corners[c] });
-      }
-    }
-    pts.sort((u, v) => u.d - v.d);
-    return pts.map((q) => q.p);
-  }
-
-  exitPoint(t) {
-    const R = this.L.ring;
-    const [cx, cy] = this.lotCenter(t);
-    switch (t.dir) {
-      case 'U': return [cx, R.y];
-      case 'D': return [cx, R.y2];
-      case 'L': return [R.x, cy];
-      default: return [R.x2, cy];
-    }
-  }
-
-  // ---------- Ereignisse abspielen ----------
-  play(events) {
+  // ---------- Ereignisse ----------
+  play(events, quiet = false) {
     const now = performance.now();
+    this.quiet = quiet;
     for (const ev of events) {
       switch (ev.type) {
-        case 'exit': (ev.crane ? this.evCrane(ev, now) : this.evExit(ev, now)); break;
-        case 'reveal': this.evReveal(ev, now); break;
-        case 'load': this.evLoad(ev, now); break;
-        case 'forkload': this.evForkload(ev, now); break;
-        case 'depart': this.evDepart(ev, now); break;
-        case 'refill': this.evRefill(ev, now); break;
+        case 'exit': this.evExit(ev, now); break;
+        case 'reveal': { const tv = this.tvs[ev.id]; tv.revealAt = now; tv.hidden = false; this.lotDirty = true; break; }
+        case 'load': this.loads.push(ev); this.tvs[ev.id].pending++; break;
+        case 'depart': this.tvs[ev.id].pendingDepart = ev; break;
         case 'spawn': this.evSpawn(ev, now); break;
         case 'rotate': this.evRotate(ev, now); break;
-        case 'barrier': this.evBarrier(ev, now); break;
-        case 'addRamp': this.evAddRamp(); break;
-        case 'shuffle': this.evShuffle(ev, now); break;
+        case 'barrier': this.barrierAnim[ev.index] = now; if (!quiet) sfx.full(); this.lotDirty = true; break;
+        case 'addRamp': this.layout(); this.bayOcc.push(null); this.after(0, () => this.hooks.onRampsChanged?.()); break;
+        case 'shuffle': this.popAt = now; break;
+        case 'requeue': this.popAt = now; break;
+        case 'forkload': this.evForkload(ev, now); break;
         case 'won':
-        case 'lost': {
-          const at = Math.max(this.busyUntil, now) + 500;
-          this.schedule(at, () => (ev.type === 'won' ? this.hooks.onWon?.() : this.hooks.onLost?.(ev.reason, ev.id)));
+        case 'lost':
+          this.endEv = ev;
           break;
-        }
         default: break;
       }
     }
-  }
-
-  // Nach dem Abfahren an die Rampe: Zeiten der Rampe setzen.
-  _claimDock(tv, id, r, tArr) {
-    tv.dock = r;
-    this.dockTruck[r] = id;
-    this.dockReadyAt[r] = tArr;
-    this.dockCursor[r] = tArr;
-    this.dockLanded[r] = tArr;
-    this.dockFreeAt[r] = Infinity;
-    this.schedule(tArr, () => {
-      tv.mode = 'dock';
-      this.hooks.onRampsChanged?.();
-    });
+    if (this.endEv && !quiet) {
+      const ev = this.endEv;
+      // Ende erst melden, wenn alle Animationen fertig sind
+      const check = () => this.whenIdle(() => setTimeout(() => {
+        if (this.endEv !== ev) return;
+        this.endEv = null;
+        if (ev.type === 'won') this.hooks.onWon?.(); else this.hooks.onLost?.(ev.reason, ev.id);
+      }, ev.type === 'won' ? 350 : 500));
+      check();
+    }
   }
 
   evExit(ev, now) {
-    const tv = this.trucks[ev.id];
-    const t = this.game.trucks[ev.id];
-    const r = ev.ramp;
-    // Position im Hof zum Zeitpunkt der Abfahrt (aus der Ansicht, falls Drehscheibe)
-    const p0 = this.posOf(tv, now);
-    const start = [p0.x, p0.y];
-    const fake = { ...t, dir: this.dirFromAngle(p0.a) };
-    const p1 = this.exitPoint(fake);
-    const dockX = this.L.docks[r];
-    const E = [dockX, this.L.ring.y];
-    const pts = [start, p1, ...this.ringPerimeterPoints(p1, E), E];
-    const clean = pts.filter((p, i) => i === 0 || Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) > 0.5);
-    if (clean.length < 2) clean.push([E[0], E[1] + 0.1]);
-    let { kf, t: tE } = this.pathKf(clean, now, 0, 0.6);
-    const last = kf[kf.length - 1];
-    if (this.dockFreeAt[r] > tE) {
-      kf.push({ ...last, t: this.dockFreeAt[r] });
-      tE = this.dockFreeAt[r];
-    }
-    const tTurn = tE + 220;
-    kf.push({ t: tTurn, x: dockX, y: E[1], a: Math.PI / 2, s: 0.8 });
-    const D = this.dockPos(tv, r);
-    const tArr = tTurn + Math.abs(D[1] - E[1]) / (SPEED * 0.55);
-    kf.push({ t: tArr, x: D[0], y: D[1], a: Math.PI / 2, s: 1 });
-    tv.kf = kf;
-    tv.mode = 'moving';
+    const tv = this.tvs[ev.id];
     tv.hidden = false;
-    this._claimDock(tv, ev.id, r, tArr);
-    sfx.start();
-  }
-
-  dirFromAngle(a) {
-    const k = Math.round(((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) / (Math.PI / 2)) % 4;
-    return ['R', 'D', 'L', 'U'][k];
-  }
-
-  // Kran: anheben, direkt zur Rampe schweben, absetzen.
-  evCrane(ev, now) {
-    const tv = this.trucks[ev.id];
-    const r = ev.ramp;
-    const p0 = this.posOf(tv, now);
-    const D = this.dockPos(tv, r);
-    const t1 = now + 300;
-    const t2 = t1 + 800;
-    const t3 = t2 + 300;
-    tv.kf = [
-      { t: now, x: p0.x, y: p0.y, a: p0.a, s: 0, lift: 0 },
-      { t: t1, x: p0.x, y: p0.y - 10, a: p0.a, s: 0, lift: 1 },
-      { t: t2, x: D[0], y: D[1] - 10, a: Math.PI / 2, s: 1, lift: 1 },
-      { t: t3, x: D[0], y: D[1], a: Math.PI / 2, s: 1, lift: 0 },
-    ];
-    tv.mode = 'moving';
-    tv.crane = true;
-    tv.hidden = false;
-    this._claimDock(tv, ev.id, r, t3);
-    this.schedule(t3, () => { tv.crane = false; vibrate(20); });
-    sfx.start();
-  }
-
-  evReveal(ev, now) {
-    const tv = this.trucks[ev.id];
-    this.schedule(now + 280, () => {
-      tv.hidden = false;
-      tv.revealT = performance.now();
-    });
-  }
-
-  evLoad(ev, now) {
-    const r = ev.ramp;
-    const id = this.dockTruck[r];
-    const tv = this.trucks[id];
-    const T = Math.max(this.dockCursor[r], this.slotTime[ev.slot], now);
-    this.dockCursor[r] = T + 40;
-    this.slotTime[ev.slot] = T;
-    const dur = 300;
-    const comp = ev.comp;
-    const idx = ev.n - 1;
-    this.schedule(T, () => {
-      this.beltView[ev.slot] = -1;
-      const [sx, sy] = this.slotPos(ev.slot, T);
-      this.flying.push({ t0: T, dur, color: ev.color, from: [sx, sy], to: () => this.bedWorld(tv, comp, idx), size0: 16, size1: 9 });
-    });
-    this.schedule(T + dur, () => {
-      tv.comps[comp].loaded = Math.max(tv.comps[comp].loaded, ev.n);
-      sfx.pallet(ev.n / tv.comps[comp].cap);
-    });
-    this.dockLanded[r] = Math.max(this.dockLanded[r], T + dur);
-  }
-
-  // Gabelstapler: Paletten kommen von der Seite direkt auf den LKW.
-  evForkload(ev, now) {
-    const r = ev.ramp;
-    const tv = this.trucks[this.dockTruck[r]];
-    const T = Math.max(this.dockCursor[r], now);
-    const startN = ev.n - ev.count;
-    const from = [this.L.docks[r] < LW / 2 ? -20 : LW + 20, this.L.dockY + 70];
-    for (let k = 0; k < ev.count; k++) {
-      const tk = T + k * 35;
-      const idx = startN + k;
-      this.schedule(tk, () => {
-        this.flying.push({ t0: tk, dur: 380, color: ev.color, from, to: () => this.bedWorld(tv, ev.comp, idx), size0: 16, size1: 9 });
-      });
-      this.schedule(tk + 380, () => {
-        tv.comps[ev.comp].loaded = Math.max(tv.comps[ev.comp].loaded, idx + 1);
-        sfx.pallet((idx + 1) / tv.comps[ev.comp].cap);
-      });
+    tv.ramp = ev.ramp;
+    tv.bay = this.chooseBay(tv);
+    tv.order = ++this.order;
+    this.lotDirty = true;
+    if (ev.crane) {
+      this.startCrane(tv, tv.bay, now);
+    } else {
+      this.planApproach(tv, tv.bay);
+      tv.state = 'drive';
+      tv.v = 0;
+      tv.s = 0;
+      tv.phase = 'approach';
+      if (!this.quiet) sfx.start();
     }
-    this.dockCursor[r] = T + ev.count * 35;
-    this.dockLanded[r] = Math.max(this.dockLanded[r], T + ev.count * 35 + 380);
   }
 
-  bedWorld(tv, comp, idx) {
-    const p = this.posOf(tv, performance.now());
-    const [L, W] = this.dimsAt(tv, p.s);
-    const [lx, ly] = bedSlotLocal(L, W, tv.comps, comp, idx);
-    const c = Math.cos(p.a);
-    const s = Math.sin(p.a);
-    return [p.x + lx * c - ly * s, p.y + lx * s + ly * c];
+  // Sind alle Buchten sichtbar belegt (geparkt oder angesteuert), darf kein
+  // weiterer LKW losfahren – auch wenn die Logik schon weiter ist.
+  canDispatch() {
+    let busy = 0;
+    for (const o of this.tvs) {
+      if (o.bay === undefined || o.bay < 0) continue;
+      if ((o.state === 'drive' && o.phase !== 'leave') || o.state === 'crane' || o.state === 'dock') busy++;
+    }
+    return busy < this.L.bays.length;
   }
 
-  evDepart(ev, now) {
-    const r = ev.ramp;
-    const tv = this.trucks[ev.id];
-    const T = Math.max(this.dockLanded[r], this.dockReadyAt[r], now) + 220;
-    this.schedule(T, () => {
-      tv.fullT = performance.now();
-      tv.doorT0 = performance.now();
-      sfx.full();
-      vibrate(25);
-    });
-    const tGo = T + 640;
-    const D = this.dockPos(tv, r);
-    const E = [D[0], this.L.ring.y];
-    const out = [D[0] < LW / 2 ? -130 : LW + 130, this.L.ring.y];
-    const { kf, t: tEnd } = this.pathKf([D, E, out], tGo, 1, 1);
-    this.schedule(tGo, () => {
-      tv.mode = 'leaving';
-      tv.kf = [{ t: tGo - 1, x: D[0], y: D[1], a: Math.PI / 2, s: 1 }, ...kf];
-      sfx.horn();
-      setTimeout(() => sfx.depart(), 120);
-      this.hooks.onDepart?.();
-    });
-    const [Lw] = this.dockDims(tv);
-    this.dockFreeAt[r] = tGo + (Lw + 30) / SPEED;
-    this.schedule(this.dockFreeAt[r], () => this.hooks.onRampsChanged?.());
-    this.schedule(tEnd, () => { tv.mode = 'gone'; });
+  // Logische Rampe ≠ sichtbare Bucht: Der LKW nimmt eine Bucht, die gerade frei
+  // ist oder deren LKW schon fertig beladen ist (und die noch kein anderer
+  // ansteuert). Laut Spiellogik reicht das immer.
+  chooseBay(tv) {
+    const n = this.L.bays.length;
+    let best = -1;
+    let bestScore = Infinity;
+    for (let b = 0; b < n; b++) {
+      let score = 0;
+      for (const o of this.tvs) {
+        if (o === tv || o.bay !== b) continue;
+        if (o.state === 'drive' && o.phase !== 'leave') score += 100; // schon reserviert
+        else if (o.state === 'crane') score += 100;
+        else if (o.state === 'dock') score += o.pendingDepart || o.fullAt ? 2 : 100;
+        else if (o.state === 'leave' && this.bayOcc[b] === o) score += 1;
+      }
+      score += b * 0.01;
+      if (score < bestScore) { bestScore = score; best = b; }
+    }
+    return best;
   }
 
-  evRefill(ev, now) {
-    const T = Math.max(this.slotTime[ev.slot], now) + 50;
-    const dur = 340;
-    const idx = this.vsiPlanned++;
-    this.slotTime[ev.slot] = T + dur;
-    this.schedule(T, () => {
-      this.feedTaken.add(idx);
-      this.feedShift[idx % 2] = performance.now();
-      this.flying.push({
-        t0: T, dur, color: ev.color & 15, covered: ev.color >= 16, from: this.L.feedHeads[idx % 2],
-        to: () => this.slotPos(ev.slot, performance.now()), size0: 16, size1: 16, refill: true,
-      });
-    });
-    this.schedule(T + dur, () => { this.beltView[ev.slot] = ev.color; });
+  // Weg vom Stau über die Ringstraße bis vor die Bucht.
+  planApproach(tv, r) {
+    const L = this.L;
+    const ux = Math.cos(tv.a);
+    const uy = Math.sin(tv.a);
+    // Schnittpunkt des Fahrstrahls mit der Ring-Mittellinie
+    let best = Infinity;
+    let edge = 0;
+    const tryT = (t, e) => { if (t > 0 && t < best) { best = t; edge = e; } };
+    if (uy < -1e-6) tryT((L.RY - tv.y) / uy, 0); // oben
+    if (ux > 1e-6) tryT((L.x2 - tv.x) / ux, 1); // rechts
+    if (uy > 1e-6) tryT((L.RB - tv.y) / uy, 2); // unten
+    if (ux < -1e-6) tryT((L.x1 - tv.x) / ux, 3); // links
+    const E = { x: clamp(tv.x + ux * best, L.x1, L.x2), y: clamp(tv.y + uy * best, L.RY, L.RB) };
+    const bx = L.bays[r];
+    const A = { x: bx + REV_R + 6, y: L.RY };
+    const pts = [{ x: tv.x, y: tv.y }, E];
+    const corner = [{ x: L.x2, y: L.RY }, { x: L.x2, y: L.RB }, { x: L.x1, y: L.RB }, { x: L.x1, y: L.RY }];
+    // Eine Seite weiter im Uhrzeigersinn, bis wir oben links vor der Bucht sind
+    let e = edge;
+    if (!(e === 0 && E.x < A.x - 24)) {
+      for (let k = 0; k < 4; k++) {
+        pts.push(corner[e]);
+        e = (e + 1) % 4;
+        if (e === 0) break;
+      }
+    }
+    pts.push(A);
+    // Zusätzliche Punkte entfernen, die zu nah beieinander liegen
+    const clean = [pts[0]];
+    for (const p of pts.slice(1)) {
+      const q = clean[clean.length - 1];
+      if (Math.hypot(p.x - q.x, p.y - q.y) > 2) clean.push(p);
+    }
+    tv.path = makePath(clean, CORNER);
+    tv.sJoin = Math.hypot(E.x - tv.x, E.y - tv.y);
+    // Haltepunkt, falls die Bucht noch belegt ist: nie auf der Rampenstraße
+    // (dort fahren die abfahrenden LKWs), sondern vor der Kurve links unten
+    // bzw. noch im Hof, bevor er auf die Straße fährt.
+    const len = vehicleLength(tv.size, L.cd);
+    const direct = edge === 0 && E.x < A.x - 24;
+    if (direct) tv.sHold = Math.max(0, tv.sJoin - ROAD_W / 2 - len / 2 - 8);
+    else {
+      const sTop = tv.path.length - (A.x - L.x1); // ungefähr: Ecke oben links
+      tv.sHold = Math.max(Math.min(tv.sJoin, sTop), sTop - CORNER - len / 2 - 10);
+    }
+    tv.cell0 = tv.cell || L.cl;
+  }
+  planReverse(tv, r) {
+    const L = this.L;
+    const bx = L.bays[r];
+    const len = vehicleLength(tv.size, L.cd);
+    const F = { x: bx, y: L.bayTop + len / 2 + 3 };
+    tv.path = makePath([{ x: bx + REV_R + 6, y: L.RY }, { x: bx, y: L.RY }, F], REV_R);
+    tv.s = 0;
+    tv.v = 0;
+    tv.phase = 'reverse';
+  }
+  planLeave(tv) {
+    const L = this.L;
+    const bx = L.bays[tv.bay];
+    tv.path = makePath([{ x: tv.x, y: tv.y }, { x: bx, y: L.RY }, { x: L.x2, y: L.RY }, { x: VW + 120, y: L.RY }], REV_R);
+    tv.s = 0;
+    tv.v = 0;
+    tv.phase = 'leave';
+    tv.state = 'leave';
+    tv.order = ++this.order;
+    tv.leaveFree = vehicleLength(tv.size, L.cd) * 0.5 + (L.RY - tv.y) + 8;
+  }
+
+  startCrane(tv, r, now) {
+    const L = this.L;
+    const len = vehicleLength(tv.size, L.cd);
+    tv.state = 'crane';
+    tv.crane = { t0: now, from: { x: tv.x, y: tv.y, a: tv.a, cell: tv.cell }, to: { x: L.bays[r], y: L.bayTop + len / 2 + 3, a: Math.PI / 2, cell: L.cd }, r, dur: 2100 };
+    this.cranes.push(tv);
+    if (!this.quiet) sfx.start();
   }
 
   evSpawn(ev, now) {
-    const tv = this.trucks[ev.id];
-    const t = this.game.trucks[ev.id];
-    const g = this.game.gates[t.gate];
-    const [gx, gy] = this.cellCenter(g.x, g.y);
-    const [x, y] = this.lotCenter(t);
-    const a = DIR_ANGLE[t.dir];
-    const T = Math.max(now, this.lastLotAnim || 0) + 250;
-    this.schedule(T, () => {
-      tv.mode = 'lot';
-      this.gateView[t.gate].left = ev.left;
-      tv.kf = [{ t: T, x: gx, y: gy, a, s: 0 }, { t: T + 450, x, y, a, s: 0 }];
-    });
+    const tv = this.tvs[ev.id];
+    const g = this.game || this.demo;
+    const gate = g.gates[ev.gate];
+    const from = this.gridToScreen(gate.x + 0.5, gate.y + 0.5);
+    this.placeLot(tv);
+    tv.spawn = { t0: now, from, to: { x: tv.x, y: tv.y } };
+    tv.state = 'spawn';
+    tv.x = from.x;
+    tv.y = from.y;
+    this.lotDirty = true;
   }
 
   evRotate(ev, now) {
-    const tv = this.trucks[ev.id];
-    const t = this.game.trucks[ev.id];
+    const tv = this.tvs[ev.id];
+    const t = tv.t;
     const [dx, dy] = DIRS[t.dir];
-    const px = t.x - dx * (t.len - 1);
-    const py = t.y - dy * (t.len - 1);
-    const [cx, cy] = this.cellCenter(px, py);
-    const half = ((t.len - 1) / 2) * this.L.cell;
-    const k0 = CLOCKWISE.indexOf(ev.from);
-    const T = now + 350;
-    const kf = [];
-    const steps = ev.steps * 3;
-    for (let i = 0; i <= steps; i++) {
-      const ang = DIR_ANGLE[ev.from] + (i / steps) * ev.steps * (Math.PI / 2);
-      kf.push({ t: T + i * 70, x: cx + Math.cos(ang) * half, y: cy + Math.sin(ang) * half, a: ang, s: 0 });
-    }
-    void k0;
-    this.lastLotAnim = T + steps * 70;
-    this.schedule(T, () => { if (tv.mode === 'lot') tv.kf = kf; });
+    const px = t.x - dx * (t.len - 1) + 0.5;
+    const py = t.y - dy * (t.len - 1) + 0.5;
+    const pivot = this.gridToScreen(px, py);
+    const a0 = DIR_ANGLE[ev.from] + this.L.ang;
+    const a1 = a0 + (Math.PI / 2) * ev.steps;
+    tv.rot = { t0: now, pivot, a0, a1, r: ((t.len - 1) / 2) * this.L.cl };
+    tv.state = 'rotate';
+    this.lotDirty = true;
   }
 
-  evBarrier(ev, now) {
-    const bv = this.barrierView[ev.index];
-    this.schedule(Math.max(now, this.busyUntil - 200), () => {
-      bv.open = true;
-      bv.openT = performance.now();
-      sfx.full();
-    });
-  }
-
-  evAddRamp() {
-    for (const arr of [this.dockFreeAt, this.dockReadyAt, this.dockCursor, this.dockLanded]) arr.push(0);
-    this.dockTruck.push(-1);
-    this.layout();
-    this.newDockT = performance.now();
-  }
-
-  evShuffle(ev, now) {
-    // Alte Paletten fliegen in die Mitte, neue kommen heraus.
-    const mid = [LW / 2, this.L.belt.y + this.L.belt.r];
-    for (let i = 0; i < this.beltView.length; i++) {
-      const c = this.beltView[i];
-      if (c < 0) continue;
-      const from = this.slotPos(i, now);
-      this.flying.push({ t0: now, dur: 260, color: c & 15, covered: c >= 16, from, to: () => mid, size0: 16, size1: 10 });
-      this.beltView[i] = -1;
-    }
-    this.vsiPlanned = this.game.si;
-    this.feedTaken = new Set();
-    for (let i = 0; i < this.game.si; i++) this.feedTaken.add(i);
-    ev.belt.forEach((c, i) => {
-      if (c < 0) return;
-      const T = now + 280 + i * 18;
-      this.slotTime[i] = T + 300;
-      this.schedule(T, () => {
-        this.flying.push({ t0: T, dur: 300, color: c & 15, covered: c >= 16, from: mid, to: () => this.slotPos(i, performance.now()), size0: 10, size1: 16 });
-      });
-      this.schedule(T + 300, () => { this.beltView[i] = c; });
-    });
-  }
-
-  // ---------- Positionen ----------
-  slotPos(i, t) {
-    const n = this.beltView.length;
-    const u = (i / n + (t - this.beltT0) * BELT_SPEED) % 1;
-    return this.stadium(u);
-  }
-
-  stadium(u) {
-    const b = this.L.belt;
-    const inset = 12;
-    const x0 = b.x + b.r;
-    const x1 = b.x + b.w - b.r;
-    const r = b.r - inset;
-    const cy = b.y + b.r;
-    const straight = x1 - x0;
-    const arc = Math.PI * r;
-    const per = 2 * straight + 2 * arc;
-    let d = u * per;
-    if (d < straight) return [x0 + d, cy - r];
-    d -= straight;
-    if (d < arc) { const a = -Math.PI / 2 + d / r; return [x1 + Math.cos(a) * r, cy + Math.sin(a) * r]; }
-    d -= arc;
-    if (d < straight) return [x1 - d, cy + r];
-    d -= straight;
-    const a = Math.PI / 2 + d / r;
-    return [x0 + Math.cos(a) * r, cy + Math.sin(a) * r];
-  }
-
-  // Bildschirmposition (CSS-Pixel) für HTML-Einblendungen.
-  warnAnchor() {
-    const b = this.L.belt;
-    return [this.offX + (b.x + b.w / 2) * this.scale, (b.y + b.r) * this.scale];
-  }
-
-  posOf(tv, now) {
-    const kf = tv.kf;
-    if (!kf.length) return { x: 0, y: 0, a: 0, s: 0, lift: 0 };
-    if (now <= kf[0].t) return kf[0];
-    for (let i = 1; i < kf.length; i++) {
-      if (now <= kf[i].t) {
-        const a = kf[i - 1];
-        const b = kf[i];
-        const f = (now - a.t) / Math.max(1, b.t - a.t);
-        return {
-          x: lerp(a.x, b.x, f), y: lerp(a.y, b.y, f), a: lerpAngle(a.a, b.a, f), s: lerp(a.s, b.s, f),
-          lift: lerp(a.lift || 0, b.lift || 0, f),
-        };
-      }
-    }
-    return kf[kf.length - 1];
-  }
-
-  dimsAt(tv, s) {
-    const [l0, w0] = this.lotDims(tv);
-    const [l1, w1] = this.dockDims(tv);
-    return [lerp(l0, l1, s), lerp(w0, w1, s)];
+  evForkload(ev, now) {
+    const tv = this.tvs[ev.id];
+    tv.pending += ev.count;
+    this.forklifts.push({ t0: now, tv, ev, done: 0 });
+    if (!this.quiet) sfx.start();
   }
 
   // ---------- Eingabe ----------
+  toVirtual(e) {
+    const r = this.canvas.getBoundingClientRect();
+    return { x: (e.clientX - r.left - this.offX) / this.scale, y: (e.clientY - r.top) / this.scale };
+  }
   onPointer(e) {
-    if (!this.game || !this.L.lot) return;
-    const rect = this.canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left - this.offX) / this.scale;
-    const y = (e.clientY - rect.top) / this.scale;
-    if (this.select === 'dock') {
-      const L = this.L;
-      if (y >= L.dockY && y <= L.dockY + L.dockH) {
-        for (let r = 0; r < L.docks.length; r++) {
-          if (Math.abs(x - L.docks[r]) < L.dockSpacing / 2) { this.hooks.onDockTap?.(r); return; }
+    if (!this.game) return;
+    const { x, y } = this.toVirtual(e);
+    const L = this.L;
+    if (this.select === 'dock' || (y > L.D - 10 && y < L.bayTop + L.bayH)) {
+      if (y > L.D - 14 && y < L.bayTop + L.bayH + 8) {
+        for (let r = 0; r < L.bays.length; r++) {
+          if (Math.abs(x - L.bays[r]) < L.bayW / 2) {
+            const tv = this.tvs.find((v) => v.state === 'dock' && v.bay === r && !v.pendingDepart && !v.fullAt);
+            if (tv) this.hooks.onDockTap?.(tv.ramp);
+            return;
+          }
         }
       }
-      return;
+      if (this.select === 'dock') return;
     }
-    const { lot, cell } = this.L;
-    const cx = Math.floor((x - lot.x) / cell);
-    const cy = Math.floor((y - lot.y) / cell);
-    const id = this.game.truckAt(cx, cy);
-    if (id < 0) return;
-    this.hooks.onTap?.(id);
+    // LKW im Stau: Umriss (etwas vergrößert) treffen, sonst nächstgelegener
+    let best = -1;
+    let bestD = Infinity;
+    for (const tv of this.tvs) {
+      if (tv.state !== 'lot') continue;
+      const c = Math.cos(tv.a);
+      const s = Math.sin(tv.a);
+      const dx = x - tv.x;
+      const dy = y - tv.y;
+      const u = dx * c + dy * s;
+      const v = -dx * s + dy * c;
+      const hl = vehicleLength(tv.size, tv.cell) / 2 + 3;
+      const hw = vehicleWidth(tv.cell) / 2 + 4;
+      if (Math.abs(u) <= hl && Math.abs(v) <= hw) {
+        const d = Math.abs(v) / hw + Math.abs(u) / hl * 0.5;
+        if (d < bestD) { bestD = d; best = tv.id; }
+      }
+    }
+    if (best >= 0) this.hooks.onTap?.(best);
   }
 
-  // Rückmeldung, wenn ein LKW nicht fahren kann.
   nudge(id, blocker) {
-    const tv = this.trucks[id];
     const now = performance.now();
-    const t = this.game.trucks[id];
-    const [x, y] = this.lotCenter(t);
-    const [dx, dy] = DIRS[t.dir];
-    const a = DIR_ANGLE[t.dir];
-    tv.kf = [
-      { t: now, x, y, a, s: 0 },
-      { t: now + 70, x: x + dx * 5, y: y + dy * 5, a, s: 0 },
-      { t: now + 220, x, y, a, s: 0 },
-    ];
-    if (blocker >= 0) this.trucks[blocker].flashT = now;
+    const tv = this.tvs[id];
+    if (tv) tv.nudge = now;
+    this.shake(now, 3);
+    if (blocker >= 0 && this.tvs[blocker]) this.tvs[blocker].flash = now;
+    if (blocker === -1) this.rampFlash = now;
   }
 
-  // ---------- Zeichnen ----------
+  warnAnchor() {
+    const L = this.L;
+    return [this.offX + (VW / 2) * this.scale, (L.bayTop + L.bayH * 0.5) * this.scale];
+  }
+
+  // ---------- Bewegung ----------
+  bodyOf(tv, x = tv.x, y = tv.y, a = tv.a) {
+    const cell = tv.cell || this.L.cd;
+    return corners(x, y, a, vehicleLength(tv.size, cell) + 2, vehicleWidth(cell) + 2);
+  }
+
+  updateTraffic(dt, now) {
+    const L = this.L;
+    const movers = this.tvs.filter((v) => v.state === 'drive' || v.state === 'leave');
+    const others = this.tvs.filter((v) => v.state === 'drive' || v.state === 'leave' || v.state === 'dock' || v.state === 'crane');
+    // Bucht reservieren, sobald sie frei ist; sonst am Haltepunkt davor warten
+    // Pro Bucht bekommt der älteste wartende LKW den Vortritt.
+    const first = new Map();
+    for (const tv of movers) {
+      if (tv.phase !== 'approach') continue;
+      const f = first.get(tv.bay);
+      if (!f || tv.order < f.order) first.set(tv.bay, tv);
+    }
+    for (const tv of movers) {
+      tv.limit = tv.path.length;
+      if (tv.phase !== 'approach') continue;
+      const occ = this.bayOcc[tv.bay];
+      if (first.get(tv.bay) === tv && (!occ || occ === tv || occ.state === 'gone')) this.bayOcc[tv.bay] = tv;
+      if (this.bayOcc[tv.bay] !== tv) tv.limit = Math.max(0, Math.min(tv.path.length, tv.sHold));
+    }
+    // 1. Wer würde wen berühren?
+    const blockedBy = new Map();
+    for (const tv of movers) {
+      const list = [];
+      if (tv.ghost > tv.s) { blockedBy.set(tv, list); continue; }
+      const look = 8 + tv.v * 50;
+      const p = tv.path.at(tv.s + look);
+      const ahead = this.bodyOf(tv, p.x, p.y, tv.phase === 'reverse' ? p.a + Math.PI : p.a);
+      for (const o of others) {
+        if (o === tv) continue;
+        if (overlap(ahead, this.bodyOf(o))) list.push(o);
+      }
+      blockedBy.set(tv, list);
+    }
+    // 2. Warten, wenn ein älterer im Weg ist, oder ein jüngerer, der nicht auf mich wartet.
+    //    Steht einer zu lange (seltene Verklemmung), darf er sich vorsichtig durchschieben.
+    // Ist das Warten „berechtigt“? Ja, wenn die Kette der Vordermänner bei einem
+    // fahrenden LKW endet oder bei einem älteren, der vor seiner Bucht wartet.
+    // Nur bei einer echten Verklemmung (Kreis, oder ein Jüngerer blockiert einen
+    // Älteren, dessen Paletten zuerst dran sind) darf sich einer vorbeischieben.
+    const holding = (o) => o.phase === 'approach' && o.limit < o.path.length && o.s >= o.limit - 1;
+    const legit = (tv, seen = new Set()) => {
+      if (seen.has(tv)) return false;
+      seen.add(tv);
+      for (const o of blockedBy.get(tv) || []) {
+        if (o.state === 'dock' || o.state === 'crane') return true;
+        if (!movers.includes(o)) continue;
+        if (o.v > 0.02) return true;
+        if (holding(o) && o.order < tv.order) return true;
+        if (legit(o, seen)) return true;
+      }
+      return false;
+    };
+    for (const tv of movers) {
+      const list = blockedBy.get(tv);
+      let stop = false;
+      for (const o of list) {
+        if (o.state === 'dock' || o.state === 'crane') { stop = true; break; }
+        const oList = blockedBy.get(o) || [];
+        if (o.order < tv.order || !oList.includes(tv)) { stop = true; break; }
+      }
+      if (stop && !legit(tv)) {
+        tv.stuck = (tv.stuck || 0) + dt;
+        if (tv.stuck > 2200) { stop = false; tv.ghost = tv.s + 70; tv.stuck = 0; }
+      } else if (!stop || tv.v > 0.05) tv.stuck = 0;
+      const vmax = tv.phase === 'reverse' ? VREV : VMAX;
+      const remain = tv.limit - tv.s;
+      const brake = Math.sqrt(2 * ACC * Math.max(0, remain)) + (remain > 0.5 ? 0.02 : 0);
+      const target = stop ? 0 : Math.min(vmax, tv.phase === 'leave' ? vmax : brake);
+      tv.v = tv.v < target ? Math.min(target, tv.v + ACC * dt) : Math.max(target, tv.v - ACC * 3 * dt);
+      tv.braking = stop || target < tv.v || remain < 30;
+      tv.s = Math.min(tv.limit, tv.s + tv.v * dt);
+      const p = tv.path.at(tv.s);
+      tv.x = p.x;
+      tv.y = p.y;
+      const a = tv.phase === 'reverse' ? p.a + Math.PI : p.a;
+      tv.a = lerpAngle(tv.a, a, Math.min(1, dt * 0.025));
+      if (tv.phase === 'approach') {
+        tv.cell = lerp(tv.cell0, L.cd, clamp(tv.s / Math.max(1, tv.sJoin), 0, 1));
+        const ahead = tv.path.at(tv.s + 25);
+        const turn = lerpAngle(0, ahead.a - p.a, 1);
+        tv.indicator = Math.abs(turn) > 0.3 ? Math.sign(turn) : 0;
+      } else tv.indicator = false;
+      if (tv.s >= tv.path.length - 0.01) this.arrive(tv, now);
+      if (tv.phase === 'leave' && tv.s > tv.leaveFree && this.bayOcc[tv.bay] === tv) {
+        this.bayOcc[tv.bay] = null;
+        this.hooks.onRampsChanged?.();
+      }
+    }
+  }
+
+  arrive(tv, now) {
+    if (tv.phase === 'approach') {
+      this.planReverse(tv, tv.bay);
+    } else if (tv.phase === 'reverse') {
+      this.dock(tv, now);
+    } else if (tv.phase === 'leave') {
+      tv.state = 'gone';
+    }
+  }
+
+  dock(tv, now) {
+    tv.state = 'dock';
+    tv.v = 0;
+    tv.a = Math.PI / 2;
+    tv.cell = this.L.cd;
+    tv.dockAt = now;
+    tv.squash = now;
+    tv.dockX = tv.x;
+    if (!this.quiet) vibrate(10);
+  }
+
+  updateCranes(now) {
+    for (const tv of this.cranes.slice()) {
+      const c = tv.crane;
+      const k = clamp((now - c.t0) / c.dur, 0, 1);
+      // 0–0.2 Haken senkt sich, 0.2–0.8 Flug, 0.8–1 absetzen
+      const m = ease(clamp((k - 0.2) / 0.6, 0, 1));
+      tv.x = lerp(c.from.x, c.to.x, m);
+      tv.y = lerp(c.from.y, c.to.y, m);
+      tv.a = lerpAngle(c.from.a, c.to.a, m);
+      tv.cell = lerp(c.from.cell, c.to.cell, m);
+      tv.lift = k < 0.2 ? k / 0.2 * 0.3 : k < 0.8 ? 0.3 + Math.sin(m * Math.PI) * 0.7 : (1 - k) / 0.2 * 0.3;
+      c.k = k;
+      if (k >= 1) {
+        this.cranes.splice(this.cranes.indexOf(tv), 1);
+        tv.lift = 0;
+        tv.bay = c.r;
+        this.bayOcc[c.r] = tv;
+        this.dock(tv, now);
+        if (!this.quiet) vibrate(20);
+      }
+    }
+  }
+
+  // Paletten: in Reihenfolge, nur zu geparkten LKWs
+  updateLoads(now) {
+    const L = this.L;
+    while (this.loads.length && now >= this.nextLoadAt) {
+      const ev = this.loads[0];
+      const tv = this.tvs[ev.id];
+      if (tv.state !== 'dock' || now - tv.dockAt < 160) break;
+      this.loads.shift();
+      this.shownSi = ev.q + 1;
+      const bx = tv.dockX ?? L.bays[tv.bay];
+      const slot = vehicleSlot(tv.size, tv.cell, ev.comp, ev.n);
+      const dist = Math.abs(bx - L.S.x);
+      const path = makePath([{ x: L.S.x, y: L.S.y }, { x: L.S.x, y: L.D }, { x: bx, y: L.D }], 10);
+      this.flights.push({ t0: now, slide: 120 + dist * 1.15, hop: 260, path, tv, ev, slot, code: ev.code });
+      this.nextLoadAt = now + LOAD_EVERY;
+    }
+    for (const f of this.flights.slice()) {
+      const k = (now - f.t0) / (f.slide + f.hop);
+      if (k < 1) continue;
+      this.flights.splice(this.flights.indexOf(f), 1);
+      const tv = f.tv;
+      tv.vis[f.ev.comp] = Math.max(tv.vis[f.ev.comp], f.ev.n);
+      tv.pending--;
+      tv.squash = now;
+      const w = this.slotWorld(tv, f.slot);
+      this.fx.push({ type: 'puff', x: w.x, y: w.y, t0: now, s: 8 });
+      if (!this.quiet) sfx.pallet(f.ev.n / tv.t.comps[f.ev.comp].cap);
+    }
+    // Abfahrt, wenn alles geladen ist
+    for (const tv of this.tvs) {
+      if (!tv.pendingDepart || tv.pending > 0 || tv.state !== 'dock') continue;
+      if (!tv.fullAt) {
+        tv.fullAt = now;
+        this.fx.push({ type: 'check', x: tv.x, y: tv.y, t0: now });
+        // Combo: mehrere volle LKWs kurz hintereinander
+        this.combo = now - this.lastFull < 2600 ? this.combo + 1 : 1;
+        this.lastFull = now;
+        this.burst(tv.x, tv.y - 6, 14, now, tv.t.comps.map((c) => COLORS[c.color].hex));
+        if (this.combo >= 2) {
+          const words = String(tr('praise')).split('|');
+          const word = words[Math.min(words.length - 1, this.combo - 2)];
+          this.fx.push({ type: 'text', x: tv.x, y: tv.y - 18, t0: now, dur: 1300, text: word, sub: `${tr('combo')} x${this.combo}` });
+          this.shake(now, 2.2);
+          if (!this.quiet && sfx.combo) setTimeout(() => sfx.combo(this.combo), 260);
+        }
+        if (!this.quiet) { sfx.full(); vibrate(25); }
+      }
+      if (now - tv.fullAt > 420) {
+        tv.pendingDepart = null;
+        this.planLeave(tv);
+        this.shake(now, 1.2);
+        if (!this.quiet) { sfx.horn(); setTimeout(() => sfx.depart(), 120); }
+        this.hooks.onDepart?.();
+      }
+    }
+  }
+
+  slotWorld(tv, slot) {
+    const c = Math.cos(tv.a);
+    const s = Math.sin(tv.a);
+    return { x: tv.x + slot.x * c - slot.y * s, y: tv.y + slot.x * s + slot.y * c + (slot.dy || 0) };
+  }
+
+  updateMisc(now) {
+    for (const tv of this.tvs) {
+      if (tv.state === 'spawn') {
+        const k = clamp((now - tv.spawn.t0) / 520, 0, 1);
+        const e = easeOut(k);
+        tv.x = lerp(tv.spawn.from.x, tv.spawn.to.x, e);
+        tv.y = lerp(tv.spawn.from.y, tv.spawn.to.y, e);
+        tv.alpha = clamp(k * 2, 0, 1);
+        if (k >= 1) { tv.state = 'lot'; tv.alpha = 1; this.placeLot(tv); this.lotDirty = true; }
+      } else if (tv.state === 'rotate') {
+        const k = clamp((now - tv.rot.t0) / 450, 0, 1);
+        const a = lerp(tv.rot.a0, tv.rot.a1, ease(k));
+        tv.a = a;
+        tv.x = tv.rot.pivot.x + Math.cos(a) * tv.rot.r;
+        tv.y = tv.rot.pivot.y + Math.sin(a) * tv.rot.r;
+        if (k >= 1) { tv.state = 'lot'; this.placeLot(tv); this.lotDirty = true; }
+      } else if (tv.state === 'dock') {
+        // Rampen verschoben (Extra-Rampe): sanft nachrücken
+        const bx = this.L.bays[tv.bay];
+        tv.dockX = lerp(tv.dockX ?? bx, bx, 0.15);
+        tv.x = tv.dockX;
+      }
+    }
+    // Gabelstapler: fährt über die Rampe zum LKW und lädt in Stapeln
+    for (const f of this.forklifts.slice()) {
+      const tv = f.tv;
+      if (tv.state !== 'dock') { f.t0 = now; continue; }
+      const k = now - f.t0;
+      const per = Math.max(35, Math.min(120, 1400 / f.ev.count));
+      const tLoad = 700;
+      const n = clamp(Math.floor((k - tLoad) / per) + 1, 0, f.ev.count);
+      while (f.done < n) {
+        f.done++;
+        const idx = f.ev.n - f.ev.count + f.done;
+        tv.vis[f.ev.comp] = Math.max(tv.vis[f.ev.comp], idx);
+        tv.pending--;
+        tv.squash = now;
+        if (!this.quiet && f.done % 3 === 1) sfx.pallet(idx / tv.t.comps[f.ev.comp].cap);
+      }
+      if (f.done >= f.ev.count && k > tLoad + per * f.ev.count + 700) this.forklifts.splice(this.forklifts.indexOf(f), 1);
+    }
+    for (const f of this.fx.slice()) if (now - f.t0 > (f.dur || 900)) this.fx.splice(this.fx.indexOf(f), 1);
+    for (const tm of this.timers.slice()) {
+      if (now >= tm.at) {
+        this.timers.splice(this.timers.indexOf(tm), 1);
+        tm.fn();
+      }
+    }
+  }
+
+  // ---------- Frame ----------
   frame(now) {
-    this.now = now;
-    while (this.tasks.length && this.tasks[0].t <= now) this.tasks.shift().fn();
-    const ctx = this.ctx;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = '#7cc35b';
-    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    if (!this.game) return;
-    ctx.setTransform(this.scale * this.dpr, 0, 0, this.scale * this.dpr, this.offX * this.dpr, 0);
-    this.drawScene(ctx, now);
-    this.flying = this.flying.filter((f) => now - f.t0 < f.dur);
+    const dt = Math.min(50, now - this.last);
+    this.last = now;
+    this.pulse = now;
+    if (this.demo) this.demoTick(now);
+    if (this.game || this.demo) {
+      this.updateTraffic(dt, now);
+      this.updateCranes(now);
+      this.updateLoads(now);
+      this.updateMisc(now);
+      // Schlange rückt weich nach
+      this.qHead += (this.shownSi - this.qHead) * Math.min(1, dt * 0.012);
+      if (Math.abs(this.shownSi - this.qHead) < 0.002) this.qHead = this.shownSi;
+      const moving = Math.abs(this.shownSi - this.qHead) > 0.01;
+      this.beltPhase += dt * (moving ? 0.09 : 0.012);
+      this.dockPhase += dt * (this.flights.length ? 0.12 : 0.0);
+    }
     if (this.idleCbs.length && this.isIdle()) {
       const cbs = this.idleCbs;
       this.idleCbs = [];
-      cbs.forEach((fn) => fn());
+      for (const fn of cbs) fn();
     }
+    this.draw(now);
   }
 
-  drawScene(ctx, now) {
+  // ---------- Zeichnen ----------
+  draw(now) {
+    const ctx = this.ctx;
+    const d = this.dpr;
+    // Bildschirmwackeln (klingt schnell ab)
+    const sk = this.shakeA * Math.max(0, 1 - (now - this.shakeT) / 380);
+    const shx = sk ? Math.sin(now * 0.09) * sk * d : 0, shy = sk ? Math.cos(now * 0.11) * sk * 0.6 * d : 0;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (shx || shy) { ctx.fillStyle = '#c9cde0'; ctx.fillRect(0, 0, this.canvas.width, this.canvas.height); }
+    if (this.sceneDirty || !this.sceneCanvas) this.renderScene();
+    ctx.drawImage(this.sceneCanvas, shx, shy);
+    ctx.setTransform(d * this.scale, 0, 0, d * this.scale, d * this.offX + shx, shy);
+    const g = this.game || this.demo;
+    this.drawBelts(ctx, now);
+    this.drawClouds(ctx, now);
+    if (!g) return;
+    this.drawLotObjects(ctx, now);
+    this.drawLotTrucks(ctx, now);
+    this.drawQueue(ctx, now, g);
+    this.drawBayOverlays(ctx, now);
+    // Fahrende und geparkte LKWs
+    const vis = this.tvs.filter((v) => v.state === 'drive' || v.state === 'leave' || v.state === 'dock' || v.state === 'spawn' || v.state === 'rotate');
+    vis.sort((a, b) => a.y - b.y);
+    for (const tv of vis) this.drawTv(ctx, tv, now);
+    this.drawFlights(ctx, now);
+    this.drawForklifts(ctx, now);
+    for (const tv of this.cranes) this.drawTv(ctx, tv, now);
+    this.drawCranes(ctx, now);
+    this.drawDockPills(ctx, now);
+    this.drawFx(ctx, now);
+  }
+
+  // Wolkenschatten: wenige große, weiche Flecken ziehen langsam über die Szene
+  // (ein vorgerendertes Sprite, pro Frame nur drei drawImage-Aufrufe).
+  drawClouds(ctx, now) {
+    if (!this._cloud) {
+      const W = 192, H = 120, cv = document.createElement('canvas');
+      cv.width = W; cv.height = H;
+      const x = cv.getContext('2d');
+      for (const [bx, by, r] of [[62, 64, 44], [104, 52, 52], [146, 68, 38], [96, 80, 40]]) {
+        const gr = x.createRadialGradient(bx, by, 0, bx, by, r);
+        gr.addColorStop(0, 'rgba(30,40,100,0.55)');
+        gr.addColorStop(0.55, 'rgba(30,40,100,0.35)');
+        gr.addColorStop(1, 'rgba(30,40,100,0)');
+        x.fillStyle = gr;
+        x.fillRect(0, 0, W, H);
+      }
+      this._cloud = cv;
+    }
+    const ex = this.offX / this.scale;
+    const x0 = -ex - 260, span = VW + 2 * ex + 260;
+    const ga = ctx.globalAlpha;
+    ctx.globalAlpha = 0.19;
+    const t = now * 0.0075; // ~7 px/s
+    const C = [[0, 0.22, 1.25], [0.45, 0.58, 1.05], [0.78, 0.9, 1.4]];
+    for (const [ph, fy, sc] of C) {
+      const x = x0 + ((t + ph * span) % span);
+      const y = fy * this.VH - 60 * sc;
+      ctx.drawImage(this._cloud, x, y, 192 * sc * 1.2, 120 * sc);
+    }
+    ctx.globalAlpha = ga;
+  }
+
+  // Fortschritts-Pille unter jedem angedockten LKW: „12/24“ mit Füllbalken in LKW-Farbe.
+  drawDockPills(ctx, now) {
     const L = this.L;
-    this.left = -this.offX / this.scale;
-    this.fullW = this.canvas.width / this.dpr / this.scale;
-
-    this.drawHall(ctx, now);
-    this.drawBelt(ctx, now);
-    this.drawDocks(ctx);
-    this.drawYard(ctx, now);
-
-    const order = { lot: 0, dock: 1, moving: 2, leaving: 3 };
-    const vis = this.trucks.filter((t) => order[t.mode] !== undefined)
-      .sort((a, b) => (order[a.mode] - order[b.mode]) || ((a.crane ? 1 : 0) - (b.crane ? 1 : 0)));
-    for (const tv of vis) this.drawTruckView(ctx, tv, now);
-
-    this.drawOverlays(ctx, now);
-    this.drawPuffs(ctx, now);
-    this.drawFlying(ctx, now);
-    this.drawChecks(ctx, now);
-  }
-
-  // Lagerhalle oben mit Zulieferbändern
-  drawHall(ctx, now) {
-    const L = this.L;
-    const left = this.left;
-    const W = this.fullW;
-    const wallBottom = L.feedY + 10;
-    // Hallenwand (blau, Wellblech)
-    const grd = ctx.createLinearGradient(0, 0, 0, wallBottom);
-    grd.addColorStop(0, '#4f9be0');
-    grd.addColorStop(1, '#3d86cc');
-    ctx.fillStyle = grd;
-    ctx.fillRect(left, 0, W, wallBottom);
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (let x = Math.floor(left / 12) * 12; x < left + W; x += 12) { ctx.moveTo(x, 0); ctx.lineTo(x, wallBottom); }
-    ctx.stroke();
-    // Hallenboden
-    ctx.fillStyle = '#f4e6c6';
-    ctx.fillRect(left, wallBottom, W, L.dockY - wallBottom);
-    ctx.fillStyle = 'rgba(0,0,0,0.05)';
-    ctx.fillRect(left, wallBottom, W, 4);
-    // Zulieferbänder: links Richtung Mitte, rechts Richtung Mitte
-    const y = L.feedY;
-    const [lh, rh] = L.feedHeads;
-    this.drawFeeder(ctx, left - 10, lh[0] + 12, y, now, 1);
-    this.drawFeeder(ctx, rh[0] - 12, left + W + 10, y, now, -1);
-    // Schütten in das Hauptband
-    for (const [hx] of L.feedHeads) {
-      ctx.fillStyle = '#d6a92c';
-      ctx.beginPath();
-      ctx.moveTo(hx - 13, y + 8);
-      ctx.lineTo(hx + 13, y + 8);
-      ctx.lineTo(hx + 9, L.belt.y + 8);
-      ctx.lineTo(hx - 9, L.belt.y + 8);
-      ctx.closePath();
-      ctx.fill();
-    }
-    // Paletten auf den Zulieferbändern (nächste zuerst, vorne an der Schütte)
-    const supply = this.game.supply;
-    for (let f = 0; f < 2; f++) {
-      const shiftF = Math.max(0, 1 - (now - this.feedShift[f]) / 200);
-      let k = 0;
-      for (let i = this.game.si - 40 < 0 ? 0 : 0; i < supply.length && k < FEED_SHOW; i++) {
-        if (i % 2 !== f || this.feedTaken.has(i)) continue;
-        const dist = (k + shiftF * 1) * FEED_GAP;
-        const x = f === 0 ? L.feedHeads[0][0] - dist : L.feedHeads[1][0] + dist;
-        const code = supply[i];
-        drawPallet(ctx, x, y + 1, 16, code & 15, { symbols: this.symbols, covered: code >= 16 });
-        k++;
-      }
-    }
-  }
-
-  drawFeeder(ctx, x0, x1, y, now, dir) {
-    ctx.fillStyle = '#b8892a';
-    rr(ctx, x0, y - 10, x1 - x0, 24, 6);
-    ctx.fill();
-    ctx.fillStyle = '#f2c230';
-    rr(ctx, x0, y - 12, x1 - x0, 22, 6);
-    ctx.fill();
-    ctx.fillStyle = '#3a3f47';
-    ctx.fillRect(x0, y - 8, x1 - x0, 14);
-    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    const off = ((now * 0.02 * dir) % 10 + 10) % 10;
-    for (let x = x0 + off; x < x1; x += 10) { ctx.moveTo(x, y - 7); ctx.lineTo(x, y + 5); }
-    ctx.stroke();
-  }
-
-  drawBelt(ctx, now) {
-    const b = this.L.belt;
-    // 3D-Rahmen
-    ctx.fillStyle = 'rgba(0,0,0,0.18)';
-    rr(ctx, b.x + 3, b.y + 8, b.w, b.h, b.r);
-    ctx.fill();
-    ctx.fillStyle = '#c7911c';
-    rr(ctx, b.x, b.y + 5, b.w, b.h, b.r);
-    ctx.fill();
-    ctx.fillStyle = '#f2c230';
-    rr(ctx, b.x, b.y, b.w, b.h, b.r);
-    ctx.fill();
-    ctx.fillStyle = '#3a3f47';
-    rr(ctx, b.x + 4, b.y + 3, b.w - 8, b.h - 7, b.r - 4);
-    ctx.fill();
-    // Innenfläche
-    ctx.fillStyle = '#f2c230';
-    rr(ctx, b.x + 24, b.y + 22, b.w - 48, b.h - 46, b.r - 24);
-    ctx.fill();
-    ctx.fillStyle = '#ffe28a';
-    rr(ctx, b.x + 26, b.y + 23, b.w - 52, b.h - 52, b.r - 26);
-    ctx.fill();
-    // Rollen
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    const n = 64;
-    for (let i = 0; i < n; i++) {
-      const u = (i / n + (now - this.beltT0) * BELT_SPEED) % 1;
-      const [x, y] = this.stadium(u);
-      const [x2, y2] = this.stadium((u + 0.001) % 1);
-      const nx = -(y2 - y);
-      const ny = x2 - x;
-      const l = Math.hypot(nx, ny) || 1;
-      ctx.moveTo(x - (nx / l) * 9, y - (ny / l) * 9);
-      ctx.lineTo(x + (nx / l) * 9, y + (ny / l) * 9);
-    }
-    ctx.stroke();
-    // Restanzeige
-    const left = this.game.supply.length - this.feedTaken.size;
-    ctx.fillStyle = '#8a6100';
-    ctx.font = 'bold 13px system-ui, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`▸ ${Math.max(0, left)}`, b.x + 34, b.y + b.r - 1);
-    for (let i = 0; i < this.beltView.length; i++) {
-      const c = this.beltView[i];
-      if (c < 0) continue;
-      const [x, y] = this.slotPos(i, now);
-      drawPallet(ctx, x, y, 16, c & 15, { symbols: this.symbols, covered: c >= 16 });
-    }
-  }
-
-  drawDocks(ctx) {
-    const L = this.L;
-    const y = L.dockY;
-    const left = this.left;
-    const W = this.fullW;
-    // Rampen-Gebäudekante (rot)
-    ctx.fillStyle = '#c94f3d';
-    ctx.fillRect(left, y - 12, W, 12);
-    ctx.fillStyle = '#e8664a';
-    ctx.fillRect(left, y - 12, W, 7);
-    // Vorplatz
-    ctx.fillStyle = '#c9d3dc';
-    ctx.fillRect(left, y, W, L.dockH + 16);
-    const now = performance.now();
-    for (let r = 0; r < L.docks.length; r++) {
-      const x = L.docks[r];
-      const w = L.dockW + 12;
-      const isNew = r === L.docks.length - 1 && this.newDockT && now - this.newDockT < 800;
-      ctx.fillStyle = '#5a3a32';
-      ctx.fillRect(x - w / 2, y - 12, w, 12);
-      for (let k = 0; k < w; k += 8) {
-        ctx.fillStyle = (k / 8) % 2 ? '#2b2b2b' : '#f2c230';
-        ctx.fillRect(x - w / 2 + k, y, Math.min(8, w - k), 5);
-      }
-      ctx.strokeStyle = isNew ? '#2fa865' : '#f2c230';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(x - w / 2, y + 6);
-      ctx.lineTo(x - w / 2, y + L.dockH - 4);
-      ctx.moveTo(x + w / 2, y + 6);
-      ctx.lineTo(x + w / 2, y + L.dockH - 4);
-      ctx.stroke();
-      ctx.fillStyle = '#1f1f1f';
-      ctx.fillRect(x - w / 2 + 2, y, 5, 8);
-      ctx.fillRect(x + w / 2 - 7, y, 5, 8);
-      const tid = this.dockTruck[r];
-      const free = tid < 0 || this.trucks[tid].mode === 'gone' || this.trucks[tid].mode === 'leaving';
-      if (free) {
-        ctx.fillStyle = 'rgba(70,85,100,0.35)';
-        ctx.font = 'bold 16px system-ui, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(String(r + 1), x, y + L.dockH / 2);
-      }
-      if (this.select === 'dock' && !free && this.trucks[tid].mode === 'dock') {
-        ctx.strokeStyle = `rgba(242,184,31,${0.6 + 0.4 * Math.sin(now / 200)})`;
-        ctx.lineWidth = 3;
-        rr(ctx, x - w / 2 - 2, y + 2, w + 4, L.dockH - 2, 8);
-        ctx.stroke();
-      }
-    }
-  }
-
-  drawYard(ctx, now) {
-    const L = this.L;
-    const R = L.ring;
-    const road = 30;
-    const left = this.left;
-    const W = this.fullW;
-    // Grünfläche ist Hintergrund; Büsche an den Seiten
-    ctx.fillStyle = '#6ab34b';
-    for (let i = 0; i < 6; i++) {
-      const yy = R.y + 40 + i * 70;
-      if (yy > this.LH - 20) break;
-      for (const xx of [left + 10, left + W - 10]) {
-        ctx.beginPath();
-        ctx.arc(xx, yy, 10, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-    // obere Straße + Ring
-    ctx.fillStyle = '#4b5563';
-    ctx.fillRect(left, R.y - road / 2 + 5, W, road);
-    ctx.fillRect(R.x - road / 2, R.y - road / 2 + 5, R.x2 - R.x + road, R.y2 - R.y + road);
-    ctx.fillStyle = '#5b6573';
-    ctx.fillRect(left, R.y - road / 2, W, road);
-    ctx.fillRect(R.x - road / 2, R.y - road / 2, R.x2 - R.x + road, R.y2 - R.y + road);
-    const lot = L.lot;
-    ctx.fillStyle = '#6b7685';
-    ctx.fillRect(lot.x - 2, lot.y - 2, lot.w + 4, lot.h + 4);
-    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([10, 10]);
-    ctx.beginPath();
-    ctx.moveTo(left, R.y);
-    ctx.lineTo(R.x, R.y);
-    ctx.moveTo(R.x2, R.y);
-    ctx.lineTo(left + W, R.y);
-    ctx.rect(R.x, R.y, R.x2 - R.x, R.y2 - R.y);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    // Parkraster
-    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let i = 0; i <= this.game.w; i++) {
-      ctx.moveTo(lot.x + i * L.cell, lot.y);
-      ctx.lineTo(lot.x + i * L.cell, lot.y + lot.h);
-    }
-    for (let j = 0; j <= this.game.h; j++) {
-      ctx.moveTo(lot.x, lot.y + j * L.cell);
-      ctx.lineTo(lot.x + lot.w, lot.y + j * L.cell);
-    }
-    ctx.stroke();
-
-    // Drehscheiben
-    for (const tt of this.turntables) {
-      const [cx, cy] = this.cellCenter(tt.x, tt.y);
-      const r = L.cell * 1.45;
-      ctx.fillStyle = '#4a5260';
-      ctx.beginPath();
-      ctx.arc(cx, cy + 3, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#8e99a8';
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r - 6, -0.3, 1.2);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(cx, cy, r - 6, Math.PI - 0.3, Math.PI + 1.2);
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      for (const ang of [1.2, Math.PI + 1.2]) {
-        const ax = cx + Math.cos(ang) * (r - 6);
-        const ay = cy + Math.sin(ang) * (r - 6);
-        ctx.beginPath();
-        ctx.arc(ax, ay, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    // Tore
-    this.game.gates.forEach((g, gi) => {
-      const [cx, cy] = this.cellCenter(g.x, g.y);
-      const s = L.cell;
-      ctx.fillStyle = '#2f6fae';
-      rr(ctx, cx - s / 2 + 1, cy - s / 2 + 5, s - 2, s - 2, 6);
-      ctx.fill();
-      ctx.fillStyle = '#4f9be0';
-      rr(ctx, cx - s / 2 + 1, cy - s / 2 - 1, s - 2, s - 2, 6);
-      ctx.fill();
-      // Öffnung zeigt in Fahrtrichtung
-      const [dx, dy] = DIRS[g.d];
-      ctx.fillStyle = '#1e2733';
-      ctx.fillRect(cx + dx * s * 0.28 - (dy ? s * 0.32 : 4), cy + dy * s * 0.28 - (dx ? s * 0.32 : 4) - 1, dy ? s * 0.64 : 8, dx ? s * 0.64 : 8);
-      const left = this.gateView[gi].left;
-      if (left > 0) badge(ctx, cx - dx * 4, cy - dy * 4 - 2, 9, '#2d3138', String(left));
-    });
-
-    // Schranken
-    this.game.barriers.forEach((b, bi) => {
-      const bv = this.barrierView[bi];
-      const fade = bv.open ? Math.max(0, 1 - (now - bv.openT) / 500) : 1;
-      if (fade <= 0) return;
-      ctx.globalAlpha = fade;
-      for (const [x, y] of b.cells) {
-        const [cx, cy] = this.cellCenter(x, y);
-        const s = L.cell * 0.8;
-        ctx.fillStyle = '#9b2c2c';
-        rr(ctx, cx - s / 2, cy - s / 2 + 4, s, s, 6);
-        ctx.fill();
+    for (const tv of this.tvs) {
+      if (tv.state !== 'dock' && !(tv.state === 'leave' && tv.s < 30)) continue;
+      const comps = tv.t.comps;
+      let n = 0;
+      let cap = 0;
+      for (let i = 0; i < comps.length; i++) { n += tv.vis[i] || 0; cap += comps[i].cap; }
+      const full = n >= cap;
+      const len = vehicleLength(tv.size, tv.cell || L.cd);
+      const x = tv.x;
+      const y = Math.min(tv.y + len / 2 + 9, L.bayTop + L.bayH + 3);
+      const pop = clamp(1 - (now - tv.squash) / 240, 0, 1);
+      const sc = 1 + 0.16 * Math.sin(pop * Math.PI) + (tv.state === 'leave' ? -clamp(tv.s / 30, 0, 1) : 0);
+      if (sc <= 0.05) continue;
+      const text = full ? '✓' : `${n}/${cap}`;
+      const w = full ? 22 : 36;
+      const h = 14;
+      const hex = full ? '#22c55e' : COLORS[comps[0].color].hex;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(sc, sc);
+      // Schatten, Rahmen, Hintergrund
+      ctx.fillStyle = 'rgba(20,24,60,0.28)';
+      ctx.beginPath(); P.roundRectPath(ctx, -w / 2 + 1, -h / 2 + 2, w, h, h / 2); ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); P.roundRectPath(ctx, -w / 2, -h / 2, w, h, h / 2); ctx.fill();
+      ctx.fillStyle = '#26304f';
+      ctx.beginPath(); P.roundRectPath(ctx, -w / 2 + 1.5, -h / 2 + 1.5, w - 3, h - 3, h / 2 - 1.5); ctx.fill();
+      // Füllstand
+      const fw = (w - 3) * (cap ? n / cap : 0);
+      if (fw > 0.5) {
         ctx.save();
-        ctx.beginPath();
-        rr(ctx, cx - s / 2, cy - s / 2, s, s, 6);
-        ctx.clip();
-        for (let k = -s; k < s; k += 10) {
-          ctx.fillStyle = (Math.round(k / 10) % 2) ? '#ffffff' : '#e5484d';
-          ctx.beginPath();
-          ctx.moveTo(cx - s / 2 + k, cy - s / 2);
-          ctx.lineTo(cx - s / 2 + k + 10, cy - s / 2);
-          ctx.lineTo(cx - s / 2 + k + 10 + s, cy + s / 2);
-          ctx.lineTo(cx - s / 2 + k + s, cy + s / 2);
-          ctx.fill();
-        }
+        ctx.beginPath(); P.roundRectPath(ctx, -w / 2 + 1.5, -h / 2 + 1.5, w - 3, h - 3, h / 2 - 1.5); ctx.clip();
+        ctx.fillStyle = hex;
+        ctx.fillRect(-w / 2 + 1.5, -h / 2 + 1.5, fw, h - 3);
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.fillRect(-w / 2 + 1.5, -h / 2 + 1.5, fw, (h - 3) * 0.4);
         ctx.restore();
       }
-      const [x, y] = b.cells[0];
-      const [cx, cy] = this.cellCenter(x, y);
-      const remain = Math.max(0, b.n - this.departedView());
-      badge(ctx, cx, cy, 10, '#2d3138', String(remain));
-      ctx.globalAlpha = 1;
-    });
-  }
-
-  departedView() {
-    return this.trucks.filter((t) => t.mode === 'leaving' || t.mode === 'gone').length;
-  }
-
-  drawTruckView(ctx, tv, now) {
-    const p = this.posOf(tv, now);
-    const [Lp, Wp] = this.dimsAt(tv, p.s);
-    const door = tv.doorT0 ? Math.min(1, (now - tv.doorT0) / 380) : 0;
-    const flash = tv.flashT ? Math.max(0, 1 - (now - tv.flashT) / 450) : 0;
-    let scale = 1;
-    if (tv.revealT) {
-      const f = (now - tv.revealT) / 300;
-      if (f < 1) scale = 1 + Math.sin(f * Math.PI) * 0.06;
-    }
-    const lift = p.lift || 0;
-    scale *= 1 + lift * 0.12;
-    if (lift > 0) {
-      // Kranseil
-      ctx.strokeStyle = '#2d3138';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(p.x, -20);
-      ctx.lineTo(p.x, p.y - 4);
-      ctx.stroke();
-      ctx.fillStyle = '#f2c230';
-      ctx.fillRect(p.x - 6, p.y - 8, 12, 6);
-    }
-    const highlight = this.select === 'truck' && tv.mode === 'lot' ? 0.6 + 0.4 * Math.sin(now / 200) : 0;
-    drawTruck(ctx, {
-      x: p.x, y: p.y, a: p.a, L: Lp * scale, W: Wp * scale,
-      comps: tv.comps, hidden: tv.hidden, open: tv.mode === 'dock' || tv.mode === 'leaving',
-      door, flash, symbols: this.symbols, lift, highlight, depth: p.s > 0.5 ? 6 : 7,
-    });
-    if (tv.mode === 'dock') {
-      const txt = tv.comps.map((c) => `${c.loaded}/${c.cap}`).join(' · ');
-      const bx = p.x;
-      const by = p.y + Lp / 2 + 11;
-      ctx.font = 'bold 11px system-ui, sans-serif';
-      const tw = ctx.measureText(txt).width + 10;
-      ctx.fillStyle = 'rgba(30,34,40,0.8)';
-      rr(ctx, bx - tw / 2, by - 8, tw, 16, 8);
-      ctx.fill();
-      ctx.fillStyle = '#fff';
+      ctx.font = '900 9.5px system-ui, "Segoe UI", sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(txt, bx, by + 0.5);
-    }
-    if (tv.mode === 'leaving' && Math.random() < 0.35) {
-      const back = -Lp / 2;
-      this.puffs.push({ x: p.x + Math.cos(p.a) * back, y: p.y + Math.sin(p.a) * back, t0: now });
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 2.4;
+      ctx.strokeStyle = 'rgba(15,20,45,0.85)';
+      ctx.strokeText(text, 0, 0.6);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(text, 0, 0.6);
+      ctx.restore();
     }
   }
 
-  // Abzeichen über den LKWs im Hof: Eilauftrag, Kette, Schlüssel.
-  drawOverlays(ctx, now) {
-    for (const tv of this.trucks) {
-      if (tv.mode !== 'lot') continue;
-      const p = this.posOf(tv, now);
-      if (tv.rush) {
-        const left = this.game.rushLeft(this.game.trucks[tv.id]);
-        if (left > 0) {
-          const urgent = left <= 2;
-          badge(ctx, p.x, p.y - 2, urgent ? 12 : 11, urgent ? '#e5484d' : '#f7791a', String(left));
-          // Blaulicht-Punkt
-          ctx.fillStyle = `rgba(59,130,246,${0.5 + 0.5 * Math.sin(now / 160)})`;
-          ctx.beginPath();
-          ctx.arc(p.x + 12, p.y - 12, 3, 0, Math.PI * 2);
-          ctx.fill();
-        } else {
-          // Abgelaufen: rot pulsierende 0, damit klar ist, welcher LKW das Level beendet hat
-          badge(ctx, p.x, p.y - 2, 12 + 2 * Math.sin(now / 120), '#e5484d', '0');
-        }
+  // Statischer Hintergrund (einmal pro Layout)
+  renderScene() {
+    const L = this.L;
+    const c = this.sceneCanvas || document.createElement('canvas');
+    c.width = this.canvas.width;
+    c.height = this.canvas.height;
+    const ctx = c.getContext('2d');
+    const d = this.dpr;
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+    // Rasen über die ganze Fläche (auch Ränder)
+    P.drawGrass(ctx, 0, 0, this.cw, this.ch, 7);
+    ctx.setTransform(d * this.scale, 0, 0, d * this.scale, d * this.offX, 0);
+    const vx0 = -this.offX / this.scale;
+    const vw = this.cw / this.scale;
+    // Platz vor den Rampen: Beton
+    P.drawConcrete(ctx, vx0, L.hall.y + L.hall.h - 4, vw, L.RY - (L.hall.y + L.hall.h) + 4, 3, { slab: 48 });
+    // Innenfläche des Rings: heller Beton, Stau-Fläche dezent markiert
+    const r = L.ring;
+    P.drawConcrete(ctx, r.x + ROAD_W / 2, r.y + ROAD_W / 2, r.w - ROAD_W, r.h - ROAD_W, 11, { slab: 60, joints: false });
+    this.drawLotShape(ctx);
+    // Ringstraße
+    P.drawRingRoad(ctx, L.ring, ROAD_W, CORNER, { exitRight: true, seed: 5 });
+    // Halle
+    // Dach liegt unter der HUD-Leiste, die Wand mit den Toren beginnt genau an
+    // der HUD-Unterkante und ist damit vollständig sichtbar.
+    const hy = Math.min(L.hall.y, 0);
+    const capH = 6;
+    const wallTop = Math.max(hy + 20, L.T - 3);
+    P.drawHallFacade(ctx, vx0, hy, vw, L.hall.y + L.hall.h - hy, {
+      gates: [{ cx: L.ell.cx - L.ell.rx, w: BELT_W + 4 }, { cx: L.ell.cx + L.ell.rx, w: BELT_W + 4 }], sign: 'PALLET RUSH', signX: VW / 2,
+      roofH: wallTop - capH - hy, capH,
+    });
+    // Deko neben dem Förderband (nach der Halle: Baumkronen dürfen vor der Wand stehen)
+    this.drawDecor(ctx);
+    // Förderband: statischer Teil
+    for (const p of this.beltPaths()) P.drawConveyor(ctx, p, BELT_W, 0, { layer: 'base', color: '#ff8a00' });
+    // Rampenwand und Buchten
+    P.drawDockWall(ctx, 14, L.wallY, VW - 28, 10, { bumpersAt: L.bays.flatMap((x) => [x - 16, x + 16]) });
+    L.bays.forEach((x, i) => P.drawDockBay(ctx, x, L.bayTop, L.slotW, L.bayH, { index: i, extra: i >= 4, floor: true }));
+    // Rollenbahn: statischer Rahmen (Rollen laufen pro Frame)
+    P.drawDockConveyor(ctx, 22, VW - 22, L.D, 14, 0, { layer: 'base' });
+    // Einheitlich knallige Farben: Szene einmalig kräftiger und klarer machen
+    if ('filter' in ctx) {
+      const tmp = document.createElement('canvas');
+      tmp.width = c.width; tmp.height = c.height;
+      tmp.getContext('2d').drawImage(c, 0, 0);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, c.width, c.height);
+      ctx.filter = 'saturate(1.25) contrast(1.04)';
+      ctx.drawImage(tmp, 0, 0);
+      ctx.filter = 'none';
+    }
+    this.sceneCanvas = c;
+    this.sceneDirty = false;
+  }
+
+  beltPaths() {
+    if (this._beltKey === this.L && this._belts) return this._belts;
+    const { cx, cy, rx, ry } = this.L.ell;
+    const L = this.L;
+    const mk = (pts) => P.conveyorPath(pts);
+    const paths = [
+      // gerade Zulieferbänder aus den Toren
+      mk([{ x: cx - rx, y: L.gateY - 8 }, { x: cx - rx, y: cy }]),
+      mk([{ x: cx + rx, y: L.gateY - 8 }, { x: cx + rx, y: cy }]),
+      // breites U-Band unten (zur Station)
+      mk(P.arcPoints(cx, cy, rx, ry, Math.PI, Math.PI / 2, 28)),
+      mk(P.arcPoints(cx, cy, rx, ry, 0, Math.PI / 2, 28)),
+      // Weiche → Station
+      mk([L.M, { x: L.S.x, y: L.S.y }]),
+    ];
+    this._beltKey = this.L;
+    this._belts = paths;
+    return paths;
+  }
+
+  drawLotShape(ctx) {
+    const g = this.game || this.demo;
+    if (!g) return;
+    const L = this.L;
+    const cells = new Set();
+    for (const t of g.trucks) for (const [x, y] of g.cells(t)) cells.add(x + ',' + y);
+    for (const gt of g.gates) cells.add(gt.x + ',' + gt.y);
+    for (const b of g.barriers) for (const [x, y] of b.cells) cells.add(x + ',' + y);
+    if (!cells.size || !L.cl) return;
+    // Parkfläche: ruhiges Rechteck um alle belegbaren Felder (keine Level-Silhouette,
+    // die nach dem Abfahren als Fleck stehen bliebe), mit aufgemalten Parkfeld-Kreuzen.
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const k of cells) {
+      const i = k.indexOf(',');
+      const x = +k.slice(0, i), y = +k.slice(i + 1);
+      if (x < x0) x0 = x; if (y < y0) y0 = y; if (x + 1 > x1) x1 = x + 1; if (y + 1 > y1) y1 = y + 1;
+    }
+    const c = L.cl, px = 1 / c; // px = ein virtueller Pixel in Feld-Einheiten
+    const m = 0.32;
+    ctx.save();
+    ctx.translate(L.lotC.x, L.lotC.y);
+    ctx.rotate(L.ang || 0);
+    ctx.scale(c, c);
+    ctx.translate(-g.w / 2, -g.h / 2);
+    const bx = x0 - m, by = y0 - m, bw = x1 - x0 + 2 * m, bh = y1 - y0 + 2 * m, br = 0.45;
+    const path = () => { ctx.beginPath(); P.roundRectPath(ctx, bx, by, bw, bh, br); };
+    // leicht vertiefte, etwas dunklere Fläche
+    path();
+    ctx.fillStyle = 'rgba(70,78,130,0.07)';
+    ctx.fill();
+    ctx.save();
+    path();
+    ctx.clip();
+    ctx.lineWidth = 7 * px;
+    ctx.strokeStyle = 'rgba(50,56,110,0.07)';
+    ctx.beginPath(); P.roundRectPath(ctx, bx - 3 * px, by - 3 * px, bw + 6 * px, bh + 6 * px, br); ctx.stroke();
+    ctx.restore();
+    // weiße Randlinie mit heller Unterkante (Licht oben links)
+    ctx.lineWidth = 1.6 * px;
+    ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+    path(); ctx.stroke();
+    // Parkfeld-Kreuze an den Rasterpunkten
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 1.3 * px;
+    ctx.lineCap = 'round';
+    const a = 0.13;
+    ctx.beginPath();
+    for (let y = y0 + 1; y < y1; y++) {
+      for (let x = x0 + 1; x < x1; x++) {
+        ctx.moveTo(x, y - a); ctx.lineTo(x, y + a);
+        ctx.moveTo(x - a, y); ctx.lineTo(x + a, y);
       }
-      if (tv.lock >= 0) {
-        const keyMode = this.trucks[tv.lock].mode;
-        if (keyMode === 'lot' || keyMode === 'wait') {
-          const n = this.chainNo[tv.id];
-          ctx.fillStyle = 'rgba(255,255,255,0.9)';
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 13, 0, Math.PI * 2);
-          ctx.fill();
-          padlock(ctx, p.x, p.y + 1, 18, '#8e4ec6');
-          ctx.fillStyle = '#fff';
-          ctx.font = 'bold 9px system-ui, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText(String(n), p.x, p.y + 4);
-        }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawDecor(ctx) {
+    const L = this.L;
+    const { cx, cy, rx, ry } = L.ell;
+    const hb = L.hall.y + L.hall.h;
+    const bottom = L.D - 12;
+    const ex = this.offX / this.scale; // sichtbarer Rand links/rechts außerhalb von 0..VW
+    // Seitenflächen links und rechts der Zulieferbänder: Rasen mit Bordstein,
+    // großer Baum, Laterne; darunter Arbeitsbereich mit Paletten bzw. Kübeln.
+    const side = (x0, x1, left) => {
+      if (x1 - x0 < 40) return;
+      const lh = Math.min(100, bottom - hb - 58);
+      const ly = hb + 7;
+      // Breite Bildschirme: Rasen bleibt kompakt am Band, außen ein zusätzlicher Baum
+      const extra = x1 - x0 - 92;
+      if (extra > 0) {
+        if (extra > 40) P.drawTree(ctx, left ? x0 + extra / 2 : x1 - extra / 2, ly + lh * 0.75, 20, left ? 5 : 1);
+        if (left) x0 = x1 - 92; else x1 = x0 + 92;
       }
-      const kn = this.chainNo['k' + tv.id];
-      if (kn) {
-        ctx.fillStyle = 'rgba(255,255,255,0.9)';
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 12, 0, Math.PI * 2);
-        ctx.fill();
-        keyIcon(ctx, p.x - 2, p.y, 18, '#8e4ec6');
+      const w = x1 - x0;
+      P.drawLawn(ctx, x0, ly, w, lh, 12);
+      if (left) {
+        P.drawBush(ctx, x0 + w * 0.8, ly + lh - 14, 8, 3);
+        P.drawTree(ctx, x0 + w * 0.42, ly + lh * 0.66, 24, 0);
+        P.drawLamp(ctx, x0 + 9, ly + lh - 8, 11);
+        // Arbeitsbereich: Palettenstapel und geparkter Stapler
+        P.drawPalletStack(ctx, x0 + 12, bottom - 10, 15, 4);
+        P.drawPalletStack(ctx, x0 + 30, bottom - 6, 15, 2);
+        P.drawForklift(ctx, x0 + w - 14, bottom - 26, -Math.PI / 2 - 0.25, 24, { forkLift: 0 });
+      } else {
+        P.drawFlowerBed(ctx, x0 + 8, ly + lh - 22, w * 0.42, 13, 5);
+        P.drawTree(ctx, x0 + w * 0.56, ly + lh * 0.62, 22, 2);
+        P.drawBush(ctx, x0 + w - 12, ly + 18, 7, 8);
+        P.drawLamp(ctx, x0 + w - 16, ly + lh - 8, 11);
+        P.drawPlanter(ctx, x0 + 14, bottom - 22, 7, 2);
+        P.drawPlanter(ctx, x0 + 34, bottom - 12, 7, 6);
+        P.drawCone(ctx, x0 + w - 18, bottom - 18, 9);
+        P.drawCone(ctx, x0 + w - 8, bottom - 8, 9);
+      }
+    };
+    side(-ex + 3, cx - rx - BELT_W / 2 - 4, true);
+    side(cx + rx + BELT_W / 2 + 4, VW + ex - 3, false);
+    // Inneres des Rundbands: Grüninsel mit Baum
+    const ix0 = cx - rx + BELT_W / 2 + 5, ix1 = cx + rx - BELT_W / 2 - 5;
+    const iy0 = hb + 7, iy1 = cy + ry - BELT_W / 2 - 8;
+    if (ix1 - ix0 > 40 && iy1 - iy0 > 30) {
+      P.drawLawn(ctx, ix0, iy0, ix1 - ix0, iy1 - iy0, Math.min(26, (iy1 - iy0) / 2));
+      P.drawBush(ctx, ix0 + 16, iy0 + 18, 8, 11);
+      P.drawBush(ctx, ix1 - 15, iy0 + 22, 7, 2);
+      P.drawTree(ctx, cx + 2, iy1 - 10, 20, 4);
+    }
+  }
+
+  drawBelts(ctx, now) {
+    const paths = this.beltPaths();
+    const ph = this.beltPhase;
+    for (const p of paths) P.drawConveyor(ctx, p, BELT_W, ph, { layer: 'belt', color: '#ff8a00' });
+    const L = this.L;
+    P.drawDockConveyor(ctx, 22, VW - 22, L.D, 14, this.dockPhase, { layer: 'belt' });
+    const g = this.game || this.demo;
+    // Weiche zeigt auf die Spur der nächsten Palette
+    const next = Math.round(this.qHead) + 1;
+    const want = next % 2 === 0 ? -1 : 1;
+    this.switchSide = lerp(this.switchSide ?? want, want, 0.2);
+    P.drawMergeSwitch(ctx, L.M.x, L.M.y, 18, this.switchSide);
+    let ok = true;
+    if (g && g.status === 'playing' && !this.loads.length && !this.flights.length) {
+      const f = g.front();
+      ok = f < 0 || !!g._findTarget(f & 15);
+    }
+    P.drawLoadingStation(ctx, L.S.x, L.S.y, 34, now / 1000, ok);
+  }
+
+  drawQueue(ctx, now, g) {
+    const L = this.L;
+    const head = this.qHead;
+    const pop = clamp((now - this.popAt) / 450, 0, 1);
+    const start = Math.max(0, Math.floor(head) - 1);
+    // Farbgruppen (aufeinanderfolgende gleiche Blöcke) bleiben auf einer Bandseite;
+    // die Gruppen wechseln sich links/rechts ab. Reihe = Blöcke davor auf derselben Seite.
+    const sup = g.supply, nb = Math.ceil(sup.length / COLS);
+    if (this._qSup !== sup || this._qLen !== sup.length) {
+      this._qSup = sup; this._qLen = sup.length;
+      const laneOf = new Int8Array(nb);
+      let run = 0;
+      for (let b = 0; b < nb; b++) {
+        if (b > 0 && sup[b * COLS] !== sup[(b - 1) * COLS]) run++;
+        laneOf[b] = run & 1;
+      }
+      this._qLane = laneOf;
+    }
+    const laneOf = this._qLane;
+    const hb = Math.floor(head / COLS), frac = (head - hb * COLS) / COLS;
+    const rowOf = new Float32Array(Math.min(nb, hb + 40) - hb + 1);
+    const cnt = [0, 0];
+    for (let b = hb; b < Math.min(nb, hb + 40); b++) {
+      const ln = laneOf[b];
+      // der vorderste Block rückt beim Abarbeiten weich nach
+      rowOf[b - hb] = cnt[ln] - (ln === laneOf[hb] ? frac : 0);
+      cnt[ln]++;
+    }
+    for (let i = Math.min(g.supply.length - 1, start + 150); i >= start; i--) {
+      if (i < this.shownSi) continue; // schon unterwegs
+      const dd = i - head;
+      const code = g.supply[i];
+      let x;
+      let y;
+      let a;
+      if (dd <= 0.02) {
+        x = L.S.x; y = L.S.y; a = Math.PI / 2;
+      } else {
+        // Blöcke zu COLS Paletten liegen als Reihe nebeneinander, Blöcke wechseln die Seite
+        const blk = Math.floor(i / COLS);
+        if (blk - hb >= rowOf.length - 1) continue;
+        const lane = L.lanes[laneOf[blk]];
+        const dist = Math.max(0, rowOf[blk - hb]) * ROW_GAP + 46; // vor der Weiche: Reihen beider Seiten überlappen nicht
+        if (dist > lane.length - 6) continue;
+        const p = lane.at(lane.length - dist);
+        const off = ((i % COLS) - (COLS - 1) / 2) * COL_GAP;
+        x = p.x - Math.sin(p.a) * off; y = p.y + Math.cos(p.a) * off; a = p.a;
+      }
+      const stagger = clamp(pop * 2 - (i - start) * 0.02, 0, 1);
+      const sc = pop < 1 ? 0.5 + 0.5 * easeOut(stagger) : 1;
+      const covered = code >= COVER && dd > 0.5;
+      drawPallet(ctx, x, y, PALLET, code & 15, { angle: a, covered, symbols: this.symbols, scale: sc });
+    }
+  }
+
+  drawFlights(ctx, now) {
+    for (const f of this.flights) {
+      const t = now - f.t0;
+      let x;
+      let y;
+      let lift = 0;
+      let scale = 1;
+      let angle = 0;
+      if (t < f.slide) {
+        const p = f.path.at(f.path.length * ease(t / f.slide));
+        x = p.x; y = p.y;
+      } else {
+        const k = clamp((t - f.slide) / f.hop, 0, 1);
+        const p0 = f.path.at(f.path.length);
+        const w = this.slotWorld(f.tv, f.slot);
+        const e = ease(k);
+        x = lerp(p0.x, w.x, e);
+        y = lerp(p0.y, w.y, e);
+        // Bogen mit etwas Strecken im Flug und kurzem Stauchen beim Aufsetzen
+        lift = Math.sin(k * Math.PI) * 1.5;
+        scale = 1 + Math.sin(k * Math.PI) * 0.22 - (k > 0.85 ? Math.sin((k - 0.85) / 0.15 * Math.PI) * 0.12 : 0);
+        angle = f.tv.a * e;
+      }
+      const sz = t < f.slide ? PALLET : lerp(PALLET, f.slot.w || PALLET, clamp((t - f.slide) / f.hop, 0, 1));
+      drawPallet(ctx, x, y, sz, f.code & 15, { angle, symbols: this.symbols, lift, scale });
+    }
+  }
+
+  drawForklifts(ctx, now) {
+    const L = this.L;
+    for (const f of this.forklifts) {
+      const tv = f.tv;
+      const k = now - f.t0;
+      const bx = tv.x;
+      const from = VW + 30;
+      const y = L.D - 2;
+      const per = Math.max(35, Math.min(120, 1400 / f.ev.count));
+      const tEnd = 700 + per * f.ev.count;
+      let x;
+      let ang = Math.PI;
+      if (k < 700) x = lerp(from, bx + 18, easeOut(k / 700));
+      else if (k < tEnd) x = bx + 18 + Math.sin(k / 60) * 2;
+      else { x = lerp(bx + 18, from, ease(clamp((k - tEnd) / 700, 0, 1))); ang = 0; }
+      P.drawForklift(ctx, x, y, ang, 30, { carrying: k < tEnd, cargo: COLORS[f.ev.color].hex, forkLift: k < tEnd ? 0.6 : 0 });
+    }
+  }
+
+  drawCranes(ctx, now) {
+    const L = this.L;
+    for (const tv of this.cranes) {
+      const c = tv.crane;
+      const k = c.k ?? 0;
+      const hookY = tv.y - 6 - (tv.lift || 0) * 10;
+      P.drawCrane(ctx, { baseX: VW - 40, baseY: L.RY - 30, hookX: tv.x, hookY, s: 1, cable: 30 + (1 - (tv.lift || 0)) * 10 + k * 0 });
+    }
+  }
+
+  drawBayOverlays(ctx, now) {
+    const L = this.L;
+    const flash = clamp(1 - (now - this.rampFlash) / 700, 0, 1);
+    // Rampenampel an der Wand: grün = frei, gelb blinkend = LKW setzt zurück, rot = belegt
+    const st = new Array(L.bays.length).fill(0);
+    for (const tv of this.tvs) {
+      if (tv.bay === undefined || tv.bay < 0 || tv.bay >= st.length) continue;
+      if (tv.state === 'dock') st[tv.bay] = Math.max(st[tv.bay], 3);
+      else if ((tv.state === 'drive' && tv.phase === 'reverse') || tv.state === 'crane') st[tv.bay] = Math.max(st[tv.bay], 2);
+      else if (tv.state === 'drive' && tv.phase === 'approach' && this.bayOcc[tv.bay] === tv) st[tv.bay] = Math.max(st[tv.bay], 1);
+    }
+    const blink = Math.sin(now / 110) > 0;
+    L.bays.forEach((x, r) => {
+      const lx = x - L.slotW / 2 - 7, ly = L.wallY + 4.5;
+      const s = st[r];
+      const col = s === 3 ? '#ff2d3d' : s >= 1 ? '#ffb300' : '#22e06b';
+      const on = s !== 2 || blink;
+      ctx.fillStyle = '#1d2027';
+      ctx.beginPath(); P.roundRectPath(ctx, lx - 3.2, ly - 3.2, 6.4, 6.4, 1.8); ctx.fill();
+      if (on) {
+        ctx.globalAlpha = 0.28;
+        ctx.fillStyle = col;
+        ctx.beginPath(); ctx.arc(lx, ly, 5.6, 0, TAU); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      ctx.fillStyle = on ? col : '#4a3a1a';
+      ctx.beginPath(); ctx.arc(lx, ly, 2.2, 0, TAU); ctx.fill();
+      if (on) { ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fillRect(lx - 1.2, ly - 1.3, 1, 1); }
+      let hl = 0;
+      if (this.select === 'dock' && this.tvs.some((v) => v.state === 'dock' && v.bay === r && !v.pendingDepart && !v.fullAt)) hl = 0.5 + 0.5 * Math.sin(now / 150);
+      if (hl > 0 || flash > 0) {
+        ctx.save();
+        ctx.globalAlpha = Math.max(hl * 0.5, flash * 0.45 * (0.5 + 0.5 * Math.sin(now / 50)));
+        ctx.fillStyle = flash > 0 ? '#ff2d3d' : '#ffd400';
+        ctx.fillRect(x - L.slotW / 2 + 1, L.bayTop + 3, L.slotW - 2, L.bayH - 5);
+        ctx.restore();
+      }
+    });
+  }
+
+  // Tore, Schranken, Drehscheiben
+  drawLotObjects(ctx, now) {
+    const g = this.game || this.demo;
+    const L = this.L;
+    const c = L.cl;
+    g.gates.forEach((gt, gi) => {
+      const p = this.gridToScreen(gt.x + 0.5, gt.y + 0.5);
+      const left = gt.queue.length - gt.next;
+      P.drawGarage(ctx, p.x, p.y, DIR_ANGLE[gt.d] + L.ang, c, { count: left });
+    });
+    g.barriers.forEach((b, bi) => {
+      for (const [x, y] of b.cells) {
+        const p = this.gridToScreen(x + 0.5, y + 0.5);
+        const at = this.barrierAnim[bi];
+        const open = at >= 0 ? clamp((now - at) / 500, 0, 1) : 0;
+        const left = Math.max(0, b.n - this.departedShown());
+        P.drawBarrier(ctx, p.x, p.y, c, { open, count: left });
+      }
+    });
+    for (const tv of this.tvs) {
+      if (!tv.t.tt || tv.t.state === GONE && tv.state !== 'rotate' && tv.state !== 'lot') continue;
+      if (tv.state === 'wait') continue;
+      const t = tv.t;
+      if (t.state !== LOT && tv.state !== 'rotate') continue;
+      const [dx, dy] = DIRS[t.dir];
+      const p = this.gridToScreen(t.x - dx * (t.len - 1) + 0.5, t.y - dy * (t.len - 1) + 0.5);
+      P.drawTurntable(ctx, p.x, p.y, c * 0.62, tv.a);
+    }
+  }
+
+  departedShown() {
+    let n = 0;
+    for (const tv of this.tvs) if (tv.state === 'leave' || tv.state === 'gone') n++;
+    return n;
+  }
+
+  drawLotTrucks(ctx, now) {
+    const g = this.game || this.demo;
+    const lot = this.tvs.filter((v) => v.state === 'lot');
+    lot.sort((a, b) => a.y - b.y);
+    const selecting = this.select === 'truck';
+    for (const tv of lot) this.drawTv(ctx, tv, now, true);
+    // Marker: Eilaufträge, Ketten
+    for (const tv of lot) {
+      const t = tv.t;
+      if (t.rush && g.status !== undefined) {
+        const left = Math.max(0, t.rush - g.moves);
+        const urgent = left <= 2;
+        const sc = urgent ? 1 + 0.12 * Math.sin(now / 90) : 1;
+        P.drawBadge(ctx, tv.x, tv.y - L_OFF(tv), 8 * sc, urgent ? '#ff2d3d' : '#ff8a00', String(left));
+      }
+      if (t.lock >= 0 && g.isLocked(t)) {
+        P.drawPadlock(ctx, tv.x, tv.y, tv.cell * 0.55);
+        const k = this.tvs[t.lock];
+        if (k && k.state === 'lot') P.drawKey(ctx, k.x, k.y, k.cell * 0.5, '#ffc21a');
       }
     }
+    void selecting;
   }
 
-  drawPuffs(ctx, now) {
-    this.puffs = this.puffs.filter((q) => now - q.t0 < 700);
-    for (const q of this.puffs) {
-      const f = (now - q.t0) / 700;
-      ctx.fillStyle = `rgba(150,155,160,${0.35 * (1 - f)})`;
-      ctx.beginPath();
-      ctx.arc(q.x, q.y - f * 6, 3 + f * 7, 0, Math.PI * 2);
-      ctx.fill();
+  drawTv(ctx, tv, now, inLot = false) {
+    const t = tv.t;
+    const nud = tv.nudge ? clamp((now - tv.nudge) / 380, 0, 1) : 1;
+    let x = tv.x;
+    let y = tv.y;
+    if (nud < 1) {
+      const off = Math.sin(nud * Math.PI * 3) * (1 - nud) * 4;
+      x += Math.cos(tv.a) * off;
+      y += Math.sin(tv.a) * off;
+    }
+    const flash = clamp(1 - (now - tv.flash) / 600, 0, 1);
+    const sq = clamp(1 - (now - tv.squash) / 260, 0, 1);
+    const hl = this.select === 'truck' && inLot ? 1 : 0;
+    const comps = t.comps;
+    drawVehicle(ctx, {
+      x, y, angle: tv.a, cell: tv.cell || this.L.cd, size: tv.size,
+      color: COLORS[comps[0].color].hex, color2: comps[1] ? COLORS[comps[1].color].hex : undefined,
+      colorIndex: comps[0].color, color2Index: comps[1]?.color,
+      hidden: tv.hidden && inLot, arrow: inLot, open: tv.state === 'dock',
+      load: tv.vis.map((n, i) => ({ n, color: comps[i].color })),
+      lift: tv.lift || 0, squash: sq * 0.6, highlight: hl, flash: flash > 0 ? flash * (0.5 + 0.5 * Math.sin(now / 45)) : 0,
+      alpha: tv.alpha ?? 1, symbols: this.symbols,
+      brake: !!tv.braking && (tv.state === 'drive' || tv.state === 'leave'),
+      indicator: tv.indicator || 0,
+      reverse: tv.phase === 'reverse' && tv.state === 'drive',
+    });
+  }
+
+  // ---------- Effekte für Spielgefühl ----------
+  shake(now, a) {
+    if (now - this.shakeT < 380 && this.shakeA * (1 - (now - this.shakeT) / 380) > a) return;
+    this.shakeT = now; this.shakeA = a;
+  }
+  burst(x, y, n, now, cols) {
+    const pal = cols && cols.length ? cols : ['#ff0a1e', '#ffe000', '#14d200', '#0a5cff', '#ff0aa0', '#00c8ff'];
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.6, v = 0.06 + Math.random() * 0.1;
+      this.fx.push({ type: 'conf', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t0: now, dur: 900 + Math.random() * 500,
+        c: Math.random() < 0.7 ? pal[i % pal.length] : '#ffffff', r: Math.random() * 6, s: 2 + Math.random() * 2.5 });
     }
   }
-
-  drawFlying(ctx, now) {
-    for (const f of this.flying) {
-      if (now < f.t0) continue;
-      const k = ease(Math.min(1, (now - f.t0) / f.dur));
-      const to = f.to();
-      const x = lerp(f.from[0], to[0], k);
-      const y = lerp(f.from[1], to[1], k);
-      const lift = Math.sin(k * Math.PI) * (f.refill ? 8 : 18);
-      drawPallet(ctx, x, y, lerp(f.size0, f.size1, k), f.color, { symbols: this.symbols, lift, covered: f.covered });
+  // Großer Konfetti-Regen beim Sieg
+  celebrate() {
+    const now = performance.now();
+    const top = this.L ? this.L.T : 0;
+    for (let i = 0; i < 90; i++) {
+      this.fx.push({ type: 'conf', x: Math.random() * VW, y: top - 20 - Math.random() * 120, vx: (Math.random() - 0.5) * 0.05, vy: 0.05 + Math.random() * 0.08,
+        t0: now + Math.random() * 400, dur: 2600, c: ['#ff0a1e', '#ffe000', '#14d200', '#0a5cff', '#ff0aa0', '#00c8ff', '#9410ff', '#ffffff'][i % 8], r: Math.random() * 6, s: 3 + Math.random() * 3 });
     }
+    this.shake(now, 2.5);
   }
 
-  drawChecks(ctx, now) {
-    for (const tv of this.trucks) {
-      if (!tv.fullT) continue;
-      const f = (now - tv.fullT) / 1100;
-      if (f > 1) continue;
-      const p = this.posOf(tv, now);
-      const a = f < 0.15 ? f / 0.15 : f > 0.75 ? (1 - f) / 0.25 : 1;
-      const r = 14 * (f < 0.15 ? 0.7 + 0.3 * (f / 0.15) : 1);
-      ctx.globalAlpha = a;
-      ctx.fillStyle = '#1a6e3f';
-      ctx.beginPath();
-      ctx.arc(p.x, p.y + 2, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#2fa865';
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 3;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(p.x - 5, p.y);
-      ctx.lineTo(p.x - 1, p.y + 4);
-      ctx.lineTo(p.x + 6, p.y - 4);
-      ctx.stroke();
-      ctx.globalAlpha = 1;
+  drawFx(ctx, now) {
+    for (const f of this.fx) {
+      if (f.type === 'conf') {
+        const tt = now - f.t0;
+        if (tt < 0) continue;
+        const k = tt / (f.dur || 900);
+        const x = f.x + f.vx * tt + Math.sin(tt * 0.008 + f.r) * 3, y = f.y + f.vy * tt + 0.00012 * tt * tt;
+        ctx.save();
+        ctx.globalAlpha = k > 0.8 ? (1 - k) / 0.2 : 1;
+        ctx.translate(x, y);
+        ctx.rotate(f.r + tt * 0.01);
+        ctx.scale(1, Math.cos(tt * 0.012 + f.r));
+        ctx.fillStyle = f.c;
+        ctx.fillRect(-f.s / 2, -f.s * 0.35, f.s, f.s * 0.7);
+        ctx.restore();
+        continue;
+      }
+      if (f.type === 'text') {
+        const k = clamp((now - f.t0) / f.dur, 0, 1);
+        const pop = k < 0.15 ? easeOut(k / 0.15) * 1.25 : k < 0.25 ? 1.25 - (k - 0.15) * 2.5 : 1;
+        ctx.save();
+        ctx.globalAlpha = k > 0.75 ? (1 - k) / 0.25 : 1;
+        ctx.translate(clamp(f.x, 60, VW - 60), f.y - easeOut(k) * 26);
+        ctx.scale(pop, pop);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineJoin = 'round';
+        ctx.font = '900 22px system-ui, sans-serif';
+        ctx.lineWidth = 6; ctx.strokeStyle = '#8a3a00'; ctx.strokeText(f.text, 0, 0);
+        const g = ctx.createLinearGradient(0, -10, 0, 10);
+        g.addColorStop(0, '#fff6a0'); g.addColorStop(1, '#ff9d00');
+        ctx.fillStyle = g; ctx.fillText(f.text, 0, 0);
+        ctx.font = '900 13px system-ui, sans-serif';
+        ctx.lineWidth = 4; ctx.strokeStyle = '#0b3f8f'; ctx.strokeText(f.sub, 0, 17);
+        ctx.fillStyle = '#ffffff'; ctx.fillText(f.sub, 0, 17);
+        ctx.restore();
+        continue;
+      }
+      const k = clamp((now - f.t0) / 900, 0, 1);
+      if (f.type === 'puff') P.drawPuff(ctx, f.x, f.y, f.s * (0.6 + k * 1.2), (1 - k) * 0.8);
+      else if (f.type === 'check') {
+        ctx.save();
+        ctx.globalAlpha = k < 0.75 ? 1 : (1 - k) / 0.25;
+        P.drawCheck(ctx, f.x, f.y - 6 - easeOut(k) * 16, 20 * (k < 0.15 ? k / 0.15 : 1));
+        ctx.restore();
+        P.drawSparkle(ctx, f.x, f.y, 24, k, '#ffd400');
+      }
     }
   }
 }
 
-// Für Farbe in HTML (Bonus-Hinweise)
+// Abstand des Abzeichens über dem LKW
+function L_OFF(tv) {
+  return vehicleWidth(tv.cell) * 0.2;
+}
+
 export const colorHex = (c) => COLORS[c].hex;
-export { shade };
+export const shade = P.shade;

@@ -3,64 +3,256 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#5cb8f2">
+<meta name="theme-color" content="#1f7fe0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Pallet Rush">
+<meta name="format-detection" content="telephone=no">
 <title>Pallet Rush</title>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" href="assets/favicon-64.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preload" href="assets/menu-bg2.jpg" as="image">
+<link rel="preload" href="assets/logo.png" as="image">
 <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
+<body class="booting">
+<!-- Symbol-Bibliothek (Icons). Nicht display:none, sonst gehen Verläufe in Chrome verloren. -->
+<svg class="svg-defs" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g-yellow" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff176"/><stop offset=".45" stop-color="#ffd02a"/><stop offset="1" stop-color="#f59e00"/></linearGradient>
+    <linearGradient id="g-orange" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffcc66"/><stop offset=".5" stop-color="#ff9a1f"/><stop offset="1" stop-color="#ef6c00"/></linearGradient>
+    <linearGradient id="g-red" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff8a80"/><stop offset=".5" stop-color="#f4433c"/><stop offset="1" stop-color="#c62828"/></linearGradient>
+    <linearGradient id="g-blue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#82c8ff"/><stop offset=".5" stop-color="#2e8cf5"/><stop offset="1" stop-color="#1559c4"/></linearGradient>
+    <linearGradient id="g-green" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a5f07a"/><stop offset=".5" stop-color="#3fc84a"/><stop offset="1" stop-color="#1e9332"/></linearGradient>
+    <linearGradient id="g-purple" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d7a6ff"/><stop offset=".5" stop-color="#9b4dff"/><stop offset="1" stop-color="#6a1fd1"/></linearGradient>
+    <linearGradient id="g-steel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c3d3e2"/><stop offset="1" stop-color="#6f88a3"/></linearGradient>
+    <linearGradient id="g-dark" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a6b82"/><stop offset="1" stop-color="#2a3446"/></linearGradient>
+    <linearGradient id="g-door" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe08a"/><stop offset="1" stop-color="#ff9800"/></linearGradient>
+    <linearGradient id="g-wood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e2a861"/><stop offset="1" stop-color="#a7642a"/></linearGradient>
+    <linearGradient id="g-glass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e8f8ff"/><stop offset=".5" stop-color="#8fd6ff"/><stop offset="1" stop-color="#3a9be8"/></linearGradient>
+    <radialGradient id="g-tire" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#5b6577"/><stop offset="1" stop-color="#151a24"/></radialGradient>
+    <pattern id="p-hazard" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="#ffd21f"/><rect width="4" height="8" fill="#232a36"/></pattern>
+  </defs>
+
+  <!-- Extra-Rampe: Ladetor mit grünem Plus -->
+  <symbol id="i-ramp" viewBox="0 0 64 64">
+    <path d="M5 20 32 6l27 14v36H5z" fill="url(#g-steel)" stroke="#1d2b4f" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M5 20 32 6l27 14" fill="none" stroke="#e9f1f8" stroke-width="1.5" stroke-linejoin="round" transform="translate(0 2.5)" opacity=".8"/>
+    <rect x="13" y="23" width="38" height="31" rx="2" fill="#2a3446" stroke="#1d2b4f" stroke-width="2"/>
+    <rect x="15.5" y="25.5" width="33" height="22" fill="url(#g-door)"/>
+    <g stroke="#d97700" stroke-width="1.6" opacity=".85"><path d="M15.5 30h33M15.5 34.5h33M15.5 39h33M15.5 43.5h33"/></g>
+    <rect x="15.5" y="25.5" width="33" height="3" fill="#fff" opacity=".45"/>
+    <rect x="28" y="44" width="8" height="2.4" rx="1.2" fill="#8a4b00"/>
+    <rect x="13" y="49" width="38" height="7" fill="url(#p-hazard)" stroke="#1d2b4f" stroke-width="2"/>
+    <rect x="7.5" y="40" width="5" height="12" rx="1.5" fill="#232a36"/>
+    <rect x="51.5" y="40" width="5" height="12" rx="1.5" fill="#232a36"/>
+    <circle cx="47" cy="17" r="12.5" fill="url(#g-green)" stroke="#fff" stroke-width="3"/>
+    <circle cx="47" cy="17" r="14" fill="none" stroke="#1d2b4f" stroke-width="1.5"/>
+    <path d="M47 10.5v13M40.5 17h13" stroke="#fff" stroke-width="4.2" stroke-linecap="round"/>
+    <ellipse cx="43" cy="11.5" rx="5" ry="2.4" fill="#fff" opacity=".45"/>
+  </symbol>
+
+  <!-- Umsortieren: zwei Bogenpfeile um bunte Palettenkisten -->
+  <symbol id="i-shuffle" viewBox="0 0 64 64">
+    <rect x="16" y="40" width="32" height="5" rx="1.2" fill="url(#g-wood)" stroke="#1d2b4f" stroke-width="1.8"/>
+    <rect x="16.5" y="27" width="10" height="13" rx="2" fill="url(#g-red)" stroke="#1d2b4f" stroke-width="1.8"/>
+    <rect x="27" y="22" width="10" height="18" rx="2" fill="url(#g-yellow)" stroke="#1d2b4f" stroke-width="1.8"/>
+    <rect x="37.5" y="27" width="10" height="13" rx="2" fill="url(#g-blue)" stroke="#1d2b4f" stroke-width="1.8"/>
+    <g fill="#fff" opacity=".55"><rect x="18.5" y="29" width="6" height="2" rx="1"/><rect x="29" y="24" width="6" height="2" rx="1"/><rect x="39.5" y="29" width="6" height="2" rx="1"/></g>
+    <!-- Pfeil 1 (oben, orange) -->
+    <path d="M9 37C8 17 33 6 50 17" fill="none" stroke="#1d2b4f" stroke-width="9" stroke-linecap="round"/>
+    <path d="M58.5 24.5 45 23.5 55 11z" fill="#1d2b4f" stroke="#1d2b4f" stroke-width="3.5" stroke-linejoin="round"/>
+    <path d="M9 37C8 17 33 6 50 17" fill="none" stroke="url(#g-orange)" stroke-width="5" stroke-linecap="round"/>
+    <path d="M58.5 24.5 45 23.5 55 11z" fill="#ff9a1f"/>
+    <path d="M11 30C13 18 28 10 42 12" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity=".7"/>
+    <!-- Pfeil 2 (unten, blau) -->
+    <path d="M55 27C56 47 31 58 14 47" fill="none" stroke="#1d2b4f" stroke-width="9" stroke-linecap="round"/>
+    <path d="M5.5 39.5 19 40.5 9 53z" fill="#1d2b4f" stroke="#1d2b4f" stroke-width="3.5" stroke-linejoin="round"/>
+    <path d="M55 27C56 47 31 58 14 47" fill="none" stroke="url(#g-blue)" stroke-width="5" stroke-linecap="round"/>
+    <path d="M5.5 39.5 19 40.5 9 53z" fill="#2e8cf5"/>
+    <path d="M53 34C51 46 38 53 24 52" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity=".6"/>
+  </symbol>
+
+  <!-- Kran: gelber Ausleger mit Seil und Haken -->
+  <symbol id="i-crane" viewBox="0 0 64 64">
+    <rect x="4" y="55" width="26" height="6" rx="2" fill="url(#g-dark)" stroke="#1d2b4f" stroke-width="1.8"/>
+    <path d="M13 56V19h9v37z" fill="url(#g-yellow)" stroke="#1d2b4f" stroke-width="2.2" stroke-linejoin="round"/>
+    <path d="M13 22l9 7-9 7 9 7-9 7 9 6M22 22l-9 7M22 36l-9 7" fill="none" stroke="#c77800" stroke-width="1.5"/>
+    <path d="M17.5 3 12 13h11z" fill="url(#g-yellow)" stroke="#1d2b4f" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M17.5 4 3 13M17.5 4 56 13" stroke="#1d2b4f" stroke-width="1.4"/>
+    <rect x="1.5" y="12" width="9" height="9" rx="1.5" fill="url(#g-steel)" stroke="#1d2b4f" stroke-width="1.8"/>
+    <path d="M6 13h55v6H6z" fill="url(#g-yellow)" stroke="#1d2b4f" stroke-width="2.2" stroke-linejoin="round"/>
+    <path d="M11 13l3 6 3-6 3 6 3-6 3 6 3-6 3 6 3-6 3 6 3-6 3 6 3-6 3 6 3-6 3 6 3-6" fill="none" stroke="#c77800" stroke-width="1.3"/>
+    <rect x="10" y="20" width="15" height="10" rx="2" fill="url(#g-orange)" stroke="#1d2b4f" stroke-width="2"/>
+    <rect x="17" y="22" width="6" height="5" rx="1" fill="url(#g-glass)"/>
+    <rect x="44" y="18" width="8" height="4" rx="1" fill="#2a3446"/>
+    <path d="M47 22v18M49 22v18" stroke="#2a3446" stroke-width="1.3"/>
+    <rect x="44.5" y="39" width="7" height="5" rx="1.5" fill="url(#g-red)" stroke="#1d2b4f" stroke-width="1.6"/>
+    <path d="M48 44v4.5a5.2 5.2 0 1 1-6.2 5.1" fill="none" stroke="#1d2b4f" stroke-width="5" stroke-linecap="round"/>
+    <path d="M48 44v4.5a5.2 5.2 0 1 1-6.2 5.1" fill="none" stroke="#cfd8e3" stroke-width="2.6" stroke-linecap="round"/>
+    <rect x="7" y="14" width="50" height="1.4" fill="#fff" opacity=".55"/>
+  </symbol>
+
+  <!-- Gabelstapler mit Palette -->
+  <symbol id="i-forklift" viewBox="0 0 64 64">
+    <rect x="42" y="9" width="5" height="46" rx="1.5" fill="url(#g-dark)" stroke="#1d2b4f" stroke-width="1.8"/>
+    <path d="M47 54h15" stroke="#1d2b4f" stroke-width="4.5" stroke-linecap="round"/>
+    <path d="M47 54h15" stroke="#9fb0c2" stroke-width="2" stroke-linecap="round"/>
+    <rect x="47" y="45" width="15" height="6" rx="1" fill="url(#g-wood)" stroke="#1d2b4f" stroke-width="1.6"/>
+    <path d="M51 45v6M57.5 45v6" stroke="#8a4f1d" stroke-width="1.3"/>
+    <rect x="48" y="30" width="13.5" height="15" rx="2" fill="url(#g-blue)" stroke="#1d2b4f" stroke-width="1.8"/>
+    <path d="M54.75 30v15" stroke="#9ed2ff" stroke-width="1.6"/>
+    <rect x="50" y="32" width="9" height="2" rx="1" fill="#fff" opacity=".55"/>
+    <path d="M12 34 16 13h19l5 21" fill="none" stroke="#1d2b4f" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M12 34 16 13h19l5 21" fill="none" stroke="#56657a" stroke-width="2.4" stroke-linejoin="round"/>
+    <path d="M18.5 32 22 23h9l3 9z" fill="url(#g-glass)" opacity=".85"/>
+    <path d="M5 50V37q0-5 5-5h29q3 0 3 3v15z" fill="url(#g-yellow)" stroke="#1d2b4f" stroke-width="2.4" stroke-linejoin="round"/>
+    <path d="M3 50V36q0-4 4-4h3v18z" fill="url(#g-orange)" stroke="#1d2b4f" stroke-width="2" stroke-linejoin="round"/>
+    <rect x="8" y="34" width="30" height="2.4" rx="1.2" fill="#fff" opacity=".6"/>
+    <rect x="14" y="39" width="22" height="3" rx="1.5" fill="url(#p-hazard)"/>
+    <circle cx="14" cy="52" r="7.5" fill="url(#g-tire)" stroke="#1d2b4f" stroke-width="1.8"/>
+    <circle cx="14" cy="52" r="3" fill="#ffd02a" stroke="#1d2b4f" stroke-width="1"/>
+    <circle cx="34" cy="53" r="6.5" fill="url(#g-tire)" stroke="#1d2b4f" stroke-width="1.8"/>
+    <circle cx="34" cy="53" r="2.6" fill="#ffd02a" stroke="#1d2b4f" stroke-width="1"/>
+  </symbol>
+
+  <!-- UI-Icons -->
+  <symbol id="i-pause" viewBox="0 0 32 32"><rect x="8" y="7" width="5.5" height="18" rx="2"/><rect x="18.5" y="7" width="5.5" height="18" rx="2"/></symbol>
+  <symbol id="i-restart" viewBox="0 0 32 32"><path d="M24.5 17.5A8.6 8.6 0 1 1 20.4 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><path d="M16.5 3.5 25 8.6l-8 5.1z" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+  <symbol id="i-play" viewBox="0 0 32 32"><path d="M10 6.5c0-1.6 1.7-2.5 3-1.7l13 8.6c1.2.8 1.2 2.5 0 3.3l-13 8.6c-1.3.8-3-.1-3-1.7z"/></symbol>
+  <symbol id="i-levels" viewBox="0 0 48 48">
+    <rect x="5" y="5" width="17" height="17" rx="4.5" fill="#fff"/>
+    <rect x="26" y="5" width="17" height="17" rx="4.5" fill="#fff"/>
+    <rect x="5" y="26" width="17" height="17" rx="4.5" fill="#fff"/>
+    <rect x="26" y="26" width="17" height="17" rx="4.5" fill="url(#g-yellow)" stroke="#fff" stroke-width="2"/>
+    <path d="M34.5 28.8l1.9 3.9 4.3.6-3.1 3 .7 4.3-3.8-2-3.8 2 .7-4.3-3.1-3 4.3-.6z" fill="#fff"/>
+    <path d="M9.5 14.5l3 3 5.5-6.5" fill="none" stroke="#2fb34a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M30.5 14.5l3 3 5.5-6.5" fill="none" stroke="#2fb34a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M9.5 35.5l3 3 5.5-6.5" fill="none" stroke="#2fb34a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="i-gear" viewBox="0 0 48 48">
+    <circle cx="24" cy="24" r="15" fill="none" stroke="#fff" stroke-width="9" stroke-dasharray="6.6 5.18"/>
+    <circle cx="24" cy="24" r="13.5" fill="#fff"/>
+    <circle cx="24" cy="24" r="5.5" fill="#7c3aed"/>
+    <circle cx="24" cy="24" r="9" fill="none" stroke="#e3d4ff" stroke-width="1.5"/>
+  </symbol>
+  <symbol id="i-phone" viewBox="0 0 64 64">
+    <rect x="18" y="4" width="28" height="56" rx="6" fill="url(#g-blue)" stroke="#fff" stroke-width="3"/>
+    <rect x="22" y="11" width="20" height="40" rx="2" fill="#e8f6ff"/>
+    <circle cx="32" cy="55" r="2" fill="#fff"/>
+    <rect x="25" y="34" width="6" height="6" rx="1" fill="#f4433c"/><rect x="33" y="34" width="6" height="6" rx="1" fill="#2fb34a"/><rect x="29" y="27" width="6" height="6" rx="1" fill="#ffc928"/>
+  </symbol>
+</svg>
+
 <canvas id="game"></canvas>
 
 <!-- Spiel-HUD -->
 <div id="hud" class="hidden">
-  <button id="btn-pause" class="icon-btn" aria-label="Menü">☰</button>
+  <button id="btn-pause" class="icon-btn" aria-label="Menü"><svg class="ui-icon"><use href="#i-pause"/></svg></button>
   <div class="hud-center">
     <div id="hud-level" class="hud-level">Level 1</div>
+    <div id="hud-progress" class="hud-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>
   </div>
   <div class="coins"><span class="coin"></span><span id="hud-coins">0</span></div>
-  <button id="btn-restart" class="icon-btn" aria-label="Neu starten">↻</button>
+  <button id="btn-restart" class="icon-btn" aria-label="Neu starten"><svg class="ui-icon"><use href="#i-restart"/></svg></button>
 </div>
 <div id="warn" class="warn hidden"></div>
+<div id="level-banner" class="level-banner hidden" aria-live="polite"></div>
 <div id="toast" class="toast hidden"></div>
 
 <div id="boosters" class="hidden">
-  <button class="booster" data-b="ramp"><span class="b-icon">⊞</span><span class="b-name" data-i18n="booster_ramp"></span><span class="b-count"></span></button>
-  <button class="booster" data-b="shuffle"><span class="b-icon">⇄</span><span class="b-name" data-i18n="booster_shuffle"></span><span class="b-count"></span></button>
-  <button class="booster" data-b="crane"><span class="b-icon">⤒</span><span class="b-name" data-i18n="booster_crane"></span><span class="b-count"></span></button>
-  <button class="booster" data-b="forklift"><span class="b-icon">⇶</span><span class="b-name" data-i18n="booster_forklift"></span><span class="b-count"></span></button>
+  <button class="booster" data-b="ramp"><span class="b-icon"><img src="assets/boosters/ramp.png" alt="" draggable="false"></span><span class="b-name" data-i18n="booster_ramp"></span><span class="b-count"></span></button>
+  <button class="booster" data-b="shuffle"><span class="b-icon"><img src="assets/boosters/shuffle.png" alt="" draggable="false"></span><span class="b-name" data-i18n="booster_shuffle"></span><span class="b-count"></span></button>
+  <button class="booster" data-b="crane"><span class="b-icon"><img src="assets/boosters/crane.png" alt="" draggable="false"></span><span class="b-name" data-i18n="booster_crane"></span><span class="b-count"></span></button>
+  <button class="booster" data-b="forklift"><span class="b-icon"><img src="assets/boosters/forklift.png" alt="" draggable="false"></span><span class="b-name" data-i18n="booster_forklift"></span><span class="b-count"></span></button>
 </div>
 
 <!-- Hauptmenü -->
-<div id="menu" class="screen">
+<div id="menu" class="screen menu-art">
+  <div class="menu-fx" aria-hidden="true"><div class="bg"></div><div class="rays"></div><i class="cloud c1"></i><i class="cloud c2"></i><i class="cloud c3"></i><i class="spark s1"></i><i class="spark s2"></i><i class="spark s3"></i><i class="spark s4"></i><div class="shade"></div></div>
   <div class="menu-top">
     <div class="coins big"><span class="coin"></span><span id="menu-coins">0</span></div>
   </div>
+
   <div class="logo">
-    <div class="logo-truck">
-      <span class="lt-cargo"></span><span class="lt-cab"></span>
+    <div class="sunburst" aria-hidden="true"></div>
+    <img class="logo-img" src="assets/logo.png" alt="" aria-hidden="true" draggable="false">
+    <svg class="logo-emblem" viewBox="0 0 240 124" aria-hidden="true">
+      <g stroke-linecap="round">
+        <path d="M6 58h34M14 74h28M4 90h32" stroke="#fff" stroke-width="7" opacity=".9"/>
+      </g>
+      <g stroke="#10306e" stroke-width="4" stroke-linejoin="round">
+        <!-- Ladefläche -->
+        <rect x="46" y="84" width="128" height="14" rx="4" fill="url(#g-dark)"/>
+        <!-- Palette -->
+        <rect x="54" y="74" width="112" height="10" rx="2" fill="url(#g-wood)"/>
+        <!-- Kisten -->
+        <rect x="56" y="40" width="34" height="34" rx="5" fill="url(#g-red)"/>
+        <rect x="93" y="40" width="34" height="34" rx="5" fill="url(#g-blue)"/>
+        <rect x="130" y="40" width="34" height="34" rx="5" fill="url(#g-green)"/>
+        <rect x="74" y="8" width="34" height="32" rx="5" fill="url(#g-yellow)"/>
+        <rect x="111" y="8" width="34" height="32" rx="5" fill="url(#g-purple)"/>
+        <!-- Fahrerhaus -->
+        <path d="M176 98V48q0-10 10-10h20q7 0 11 6l13 20q4 6 4 13v21z" fill="url(#g-orange)"/>
+        <path d="M188 50h17l11 17h-28z" fill="url(#g-glass)" stroke-width="3"/>
+        <!-- Räder -->
+        <circle cx="80" cy="100" r="14" fill="url(#g-tire)"/>
+        <circle cx="140" cy="100" r="14" fill="url(#g-tire)"/>
+        <circle cx="204" cy="100" r="14" fill="url(#g-tire)"/>
+      </g>
+      <g fill="#fff" opacity=".55">
+        <rect x="61" y="45" width="24" height="4" rx="2"/><rect x="98" y="45" width="24" height="4" rx="2"/><rect x="135" y="45" width="24" height="4" rx="2"/>
+        <rect x="79" y="13" width="24" height="4" rx="2"/><rect x="116" y="13" width="24" height="4" rx="2"/>
+        <rect x="182" y="44" width="16" height="3" rx="1.5"/>
+      </g>
+      <g stroke="#10306e" stroke-width="2" opacity=".35"><path d="M73 42v30M110 42v30M147 42v30M91 10v28M128 10v28"/></g>
+      <g fill="#dfe7ef"><circle cx="80" cy="100" r="5"/><circle cx="140" cy="100" r="5"/><circle cx="204" cy="100" r="5"/></g>
+      <rect x="226" y="80" width="8" height="7" rx="2" fill="#fff59d" stroke="#10306e" stroke-width="2"/>
+      <path d="M190 80h20" stroke="#10306e" stroke-width="3" stroke-linecap="round" opacity=".5"/>
+    </svg>
+    <h1 class="logo-title sr-only-art" aria-label="Pallet Rush">
+      <span class="lw lw1" data-text="Pallet">Pallet</span>
+      <span class="lw lw2" data-text="Rush">Rush</span>
+    </h1>
+  </div>
+
+  <div class="menu-actions">
+    <button id="btn-play" class="play-btn">
+      <span class="play-ico"><svg><use href="#i-play"/></svg></span>
+      <span class="play-text"><span class="play-label" data-i18n="play"></span><small id="play-level">Level 1</small></span>
+    </button>
+    <div class="menu-row">
+      <button id="btn-levels" class="tile-btn tile-blue"><span class="tile-ico"><svg viewBox="0 0 48 48"><use href="#i-levels"/></svg></span><span class="tile-label" data-i18n="levels"></span></button>
+      <button id="btn-settings" class="tile-btn tile-purple"><span class="tile-ico"><svg viewBox="0 0 48 48"><use href="#i-gear"/></svg></span><span class="tile-label" data-i18n="settings"></span></button>
     </div>
-    <h1>Pallet<br>Rush</h1>
   </div>
-  <div class="menu-buttons">
-    <button id="btn-play" class="btn primary big"><span data-i18n="play"></span><small id="play-level">Level 1</small></button>
-    <button id="btn-levels" class="btn" data-i18n="levels"></button>
-    <button id="btn-settings" class="btn" data-i18n="settings"></button>
-  </div>
+
   <div class="menu-foot">
-    <div data-i18n="credit"></div>
-    <div id="version" class="version"></div>
+    <span data-i18n="credit"></span><span class="dot">·</span><span id="version" class="version"></span>
   </div>
 </div>
 
 <!-- Dialog -->
 <div id="modal" class="modal hidden">
   <div class="panel" id="modal-panel"></div>
+</div>
+
+<!-- Überblendung zwischen Menü und Spiel -->
+<div id="fader" class="fader" aria-hidden="true"></div>
+
+<!-- Ladebildschirm -->
+<div id="splash" class="splash">
+  <img class="splash-logo" src="assets/logo.png" alt="Pallet Rush" draggable="false">
+  <div class="splash-bar"><i id="splash-fill"></i></div>
+  <div id="splash-text" class="splash-text">Lädt …</div>
+</div>
+
+<!-- Hochformat-Hinweis (nur Querformat auf kleinen Geräten, per CSS) -->
+<div id="rotate" aria-hidden="true">
+  <svg class="rotate-phone" viewBox="0 0 64 64"><use href="#i-phone"/></svg>
+  <div class="rotate-text">Bitte Gerät drehen<small>Please rotate your device</small></div>
 </div>
 
 <script type="module" src="js/main.js"></script>

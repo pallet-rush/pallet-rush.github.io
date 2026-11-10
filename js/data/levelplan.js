@@ -2,43 +2,64 @@
 // Wird nur von tools/levelgen.html genutzt, nicht vom Spiel selbst.
 // Bedeutung der Parameter: siehe js/core/generator.js.
 //
-// Schwierigkeit wird über target gesteuert = Erfolgsquote simulierter Spieler
-// (hoch = leicht). Das erste Level jeder Welt ist leichter (neue Mechanik lernen).
+// Abwechslung: Jedes Level hat eine eigene Stau-Form (Herz, Stern, Kreis …),
+// mal gerade, mal schräg (45°). Schwierigkeit steigt über
+//  - mehr LKWs und Farben,
+//  - dichteren Stau,
+//  - kleinere Paletten-Pakete (die Schlange wechselt öfter die Farbe),
+//  - target = Erfolgsquote simulierter Spieler (hoch = leicht).
+// Das erste Level jeder Welt ist leichter (neue Mechanik lernen).
 
-const base = { ramps: 4, belt: 24, chunk: [2, 6], fair: 0.4 };
+const base = { ramps: 4, playouts: 60, slack: 2 };
 
-// Welt 1: Grundkurs (handverlesene Parameter)
-const WORLD1 = [
-  { ...base, w: 5, h: 5, trucks: 3, colors: 2, mix: { S: 1 }, noise: 0, target: [0.9, 1] },
-  { ...base, w: 5, h: 6, trucks: 5, colors: 3, mix: { S: 1 }, noise: 1, target: [0.8, 1] },
-  { ...base, w: 6, h: 6, trucks: 7, colors: 3, mix: { S: 3, M: 1 }, noise: 1.5, target: [0.6, 1] },
-  { ...base, w: 6, h: 7, trucks: 9, colors: 4, mix: { S: 3, M: 2 }, noise: 2, target: [0.5, 0.95] },
-  { ...base, w: 6, h: 8, trucks: 11, colors: 4, mix: { S: 3, M: 2, L: 1 }, noise: 2.5, target: [0.4, 0.9] },
-  { ...base, w: 7, h: 8, trucks: 13, colors: 5, mix: { S: 3, M: 2, L: 1 }, noise: 3, target: [0.3, 0.85] },
-  { ...base, w: 7, h: 9, trucks: 15, colors: 5, mix: { S: 3, M: 2, L: 1 }, noise: 3.5, target: [0.25, 0.8] },
-  { ...base, w: 7, h: 9, trucks: 17, colors: 6, mix: { S: 3, M: 2, L: 1 }, noise: 4, target: [0.2, 0.75] },
-  { ...base, w: 7, h: 9, trucks: 15, colors: 6, mix: { S: 3, M: 2, L: 1 }, noise: 4.5, target: [0.2, 0.7] },
-  { ...base, w: 7, h: 9, trucks: 16, colors: 6, mix: { S: 3, M: 2, L: 1 }, noise: 5, target: [0.15, 0.65] },
+// Formen-Reihenfolge: keine zwei gleichen hintereinander
+const SHAPE_CYCLE = [
+  'circle', 'heart', 'diamond', 'star', 'hexagon', 'cross', 'blob', 'triangle',
+  'ring', 'hourglass', 'arrow', 'wave', 'rect',
 ];
+
+// Welt 1: Grundkurs (handverlesen)
+const WORLD1 = [
+  { shape: 'rect', angle: 0, R: 2.6, density: 0.55, colors: 2, mix: { S: 1 }, chunk: [4, 8], stay: 0.7, deep: 0, target: [0.9, 1] },
+  { shape: 'circle', angle: 0, R: 3.2, density: 0.6, colors: 3, mix: { S: 3, M: 1 }, chunk: [4, 8], stay: 0.6, deep: 0.1, target: [0.85, 1] },
+  { shape: 'diamond', angle: 45, R: 3.4, density: 0.62, colors: 3, mix: { S: 3, M: 1 }, chunk: [3, 7], stay: 0.6, deep: 0.15, target: [0.8, 1] },
+  { shape: 'heart', angle: 0, R: 3.8, density: 0.64, colors: 3, mix: { S: 3, M: 2 }, chunk: [3, 7], stay: 0.55, deep: 0.2, target: [0.75, 1] },
+  { shape: 'hexagon', angle: 45, R: 4.0, density: 0.66, colors: 4, mix: { S: 3, M: 2, L: 0.5 }, chunk: [3, 6], stay: 0.5, deep: 0.25, target: [0.7, 0.98] },
+  { shape: 'star', angle: 0, R: 4.4, density: 0.66, colors: 4, mix: { S: 3, M: 2, L: 1 }, chunk: [3, 6], stay: 0.5, deep: 0.3, target: [0.65, 0.95] },
+  { shape: 'cross', angle: 45, R: 4.6, density: 0.68, colors: 4, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 6], stay: 0.5, deep: 0.3, target: [0.6, 0.92] },
+  { shape: 'blob', angle: 0, R: 4.8, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 6], stay: 0.45, deep: 0.35, target: [0.55, 0.9] },
+  { shape: 'triangle', angle: 0, R: 5.0, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 5], stay: 0.45, deep: 0.35, target: [0.5, 0.88] },
+  { shape: 'ring', angle: 45, R: 5.2, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 5], stay: 0.4, deep: 0.4, target: [0.45, 0.85] },
+].map((p) => ({ ...base, ...p }));
 
 // Welten 2–10: Parameter folgen einer Kurve, plus die Mechanik der Welt.
 function worldLevel(w, j) {
+  const n = 10 + w * 10 + j; // Index 0-basiert
   const intro = j === 0;
   const k = intro ? 0 : j;
+  const lvl = w + k * 0.1; // grobe Stufe 1 … 10
   const p = {
     ...base,
-    ramps: w >= 3 ? 5 : 4,
-    belt: w >= 5 ? 28 : 24,
-    w: 7,
-    h: k < 3 ? 8 : 9,
-    trucks: Math.min(17, 10 + Math.floor(w * 0.4) + Math.floor(k * 0.7) + (w >= 3 ? 1 : 0)),
-    colors: Math.min(8, 4 + Math.floor(w / 3) + Math.floor(k / 4)),
-    mix: { S: 3, M: 2, L: 1.2 },
-    noise: 2.5 + k * 0.35 + w * 0.2,
+    shape: SHAPE_CYCLE[(n * 5) % SHAPE_CYCLE.length],
+    angle: (n % 3 === 1) ? 0 : 45,
+    R: Math.min(6.4, 4.4 + lvl * 0.22 + (intro ? -0.4 : 0)),
+    density: Math.min(0.82, 0.66 + lvl * 0.018),
+    maxTrucks: 34,
+    colors: Math.min(8, 4 + Math.floor(lvl / 2.2)),
+    mix: { S: 3, M: 2, L: 1 + lvl * 0.08 },
+    chunk: [Math.max(1, 3 - Math.floor(lvl / 4)), Math.max(3, 6 - Math.floor(lvl / 3))],
+    stay: Math.max(0.15, 0.45 - lvl * 0.03),
+    deep: Math.min(0.75, 0.35 + lvl * 0.04),
+    // Jedes 3. Level ist knackiger (weniger Spielraum), das 10. ist ein Boss-Level.
+    slack: j === 9 || j % 3 === 2 ? 1 : 2,
     target: intro
-      ? [0.4, 1]
-      : [Math.max(0.06, 0.5 - k * 0.035 - w * 0.025), Math.min(0.95, 0.88 - k * 0.035 - w * 0.02)],
+      ? [0.6, 1]
+      : j === 9
+        ? [Math.max(0.05, 0.3 - w * 0.02), Math.max(0.3, 0.55 - w * 0.02)]
+        : [Math.max(0.12, 0.62 - k * 0.025 - w * 0.035), Math.min(0.95, 0.95 - k * 0.02 - w * 0.03)],
   };
+  // Ringe und Kreuze haben wenig Fläche: etwas größer
+  if (p.shape === 'ring' || p.shape === 'cross' || p.shape === 'star') p.R = Math.min(6.6, p.R + 0.5);
   // Mechanik der Welt (stark) und frühere Mechaniken (gelegentlich)
   if (w === 1) p.hidden = 0.35 + k * 0.03; else if (w > 1 && j % 3 === 1) p.hidden = 0.25;
   if (w === 2) { p.gates = k >= 5 ? 2 : 1; p.gateQ = [2, 3]; } else if (w > 2 && j % 3 === 2) { p.gates = 1; p.gateQ = [2, 2]; }

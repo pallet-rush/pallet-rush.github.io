@@ -36,14 +36,14 @@ export function parseSupply(str) {
 
 // Palettenfarben. Index = Farbcode in den Leveldaten.
 export const COLORS = [
-  { key: 'red',    hex: '#e5484d', dark: '#a8262b', symbol: '●' },
-  { key: 'blue',   hex: '#3b82f6', dark: '#1d4fb8', symbol: '▲' },
-  { key: 'yellow', hex: '#f5c400', dark: '#b08a00', symbol: '■' },
-  { key: 'green',  hex: '#2fa865', dark: '#1a6e3f', symbol: '★' },
-  { key: 'purple', hex: '#8e4ec6', dark: '#5c2d8a', symbol: '◆' },
-  { key: 'orange', hex: '#f7791a', dark: '#b4520a', symbol: '✚' },
-  { key: 'teal',   hex: '#12a5a0', dark: '#0a6b68', symbol: '♥' },
-  { key: 'pink',   hex: '#ef5da8', dark: '#a8306d', symbol: '✿' },
+  { key: 'red',    hex: '#ff0a1e', light: '#ff5560', dark: '#c00010', symbol: '●' },
+  { key: 'blue',   hex: '#0a5cff', light: '#4d8cff', dark: '#0036c9', symbol: '▲' },
+  { key: 'yellow', hex: '#ffe000', light: '#fff04d', dark: '#e0a800', symbol: '■' },
+  { key: 'green',  hex: '#14d200', light: '#5cf03c', dark: '#0a9000', symbol: '★' },
+  { key: 'purple', hex: '#9410ff', light: '#b85cff', dark: '#6000cc', symbol: '◆' },
+  { key: 'orange', hex: '#ff6a00', light: '#ff9a40', dark: '#d04800', symbol: '✚' },
+  { key: 'cyan',   hex: '#00c8ff', light: '#55dcff', dark: '#008cc8', symbol: '♥' },
+  { key: 'pink',   hex: '#ff0aa0', light: '#ff5cc4', dark: '#c4007a', symbol: '✿' },
 ];
 
 // Zustände eines LKWs.
