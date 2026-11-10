@@ -177,7 +177,7 @@ mit Münzen kaufen.
    Auslauf / bald auf dem Band) das Level unlösbar macht. Jede solche Stelle ist eine
    Falle. Mindestzahl: Level 1–2: 0, Level 3–5: 1, 6–8: 2, 9: 3, 10: 4; danach je
    Welt 2 + ⌊Welt/2⌋, jedes 3. Level +1, Boss-Level +3 (höchstens 7).
-   Farben: Level 3 schon 4, ab Level 7 sechs, ab Welt 4 sieben, ab Welt 7 alle acht.
+   Farben: Level 1: 2, Level 2: 3, Level 3–4: 4, Level 5–6: 5, ab Level 7 sechs, ab Welt 4 sieben, ab Welt 7 alle acht.
 5. Ausgeliefert werden nur Level, die alle Prüfungen bestehen. Ein Prüf-Tool
    kann jederzeit den gesamten Levelbestand neu verifizieren.
 
