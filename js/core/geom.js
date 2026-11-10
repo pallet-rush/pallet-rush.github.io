@@ -8,7 +8,7 @@
 
 import { DIRS, SIZES } from './constants.js';
 
-export const LOT_K = 0.77;                         // LKW-Maßstab im Hof relativ zum Raster
+export const LOT_K = 0.9;                          // LKW-Maßstab im Hof relativ zum Raster (ab v0.5.4 größer)
 export const bodyLen = (len) => (len - 0.16) * LOT_K;
 export const BODY_W = 0.84 * LOT_K;
 export const GATE_W = 1.2;                         // Breite der Torhalle

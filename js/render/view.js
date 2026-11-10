@@ -17,7 +17,7 @@
 // wenn sie wirklich frei ist.
 
 import { COLORS, DIRS, SIZES, COVER, LOT, WAIT, GONE } from '../core/constants.js';
-import { GATE_W, GATE_BACK, BODY_W, bodyLen } from '../core/geom.js';
+import { GATE_W, GATE_BACK, BODY_W, bodyLen, LOT_K } from '../core/geom.js';
 import { t as tr } from '../i18n.js';
 import { drawVehicle, drawPallet, vehicleSlot, vehicleLength, vehicleWidth } from './vehicles.js';
 import * as P from './props.js';
@@ -27,7 +27,6 @@ const FW = 390; // Breite der Fabrik (Hochformat: ganze Szene)
 const LOT_W = 372; // Querformat: Breite des Hofs rechts neben der Fabrik
 const LAND_H = 434; // Querformat: Höhe der Szene (Halle bis Rampenstraße)
 const DIR_ANGLE = { R: 0, D: Math.PI / 2, L: Math.PI, U: -Math.PI / 2 };
-const LOT_K = 0.77;      // Maßstab der LKWs im Hof relativ zum Raster (Abstand zueinander)
 const ROAD_W = 30;
 const CORNER = 26;
 const REV_R = 30; // Radius beim Rückwärts-Einparken
@@ -746,23 +745,27 @@ export class GameView {
       }
       if (this.select === 'dock') return;
     }
-    // LKW im Stau: Umriss (etwas vergrößert) treffen, sonst nächstgelegener
+    // LKW im Stau: großzügig treffen (ab v0.5.4). Wer daneben tippt, bekommt den
+    // nächstgelegenen LKW, solange der Abstand zum Umriss unter ~halbem Feld liegt.
     let best = -1;
     let bestD = Infinity;
+    const tol = Math.max(10, (L.cl || 24) * 0.55);
     for (const tv of this.tvs) {
       if (tv.state !== 'lot') continue;
       const c = Math.cos(tv.a);
       const s = Math.sin(tv.a);
       const dx = x - tv.x;
       const dy = y - tv.y;
-      const u = dx * c + dy * s;
-      const v = -dx * s + dy * c;
-      const hl = vehicleLength(tv.size, tv.cell) / 2 + 3;
-      const hw = vehicleWidth(tv.cell) / 2 + 4;
-      if (Math.abs(u) <= hl && Math.abs(v) <= hw) {
-        const d = Math.abs(v) / hw + Math.abs(u) / hl * 0.5;
-        if (d < bestD) { bestD = d; best = tv.id; }
-      }
+      const u = Math.abs(dx * c + dy * s);
+      const v = Math.abs(-dx * s + dy * c);
+      const hl = vehicleLength(tv.size, tv.cell) / 2;
+      const hw = vehicleWidth(tv.cell) / 2;
+      const ou = Math.max(0, u - hl), ov = Math.max(0, v - hw);
+      const out = Math.hypot(ou, ov);
+      if (out > tol) continue;
+      // innen: Nähe zur Mittellinie entscheidet; außen: Abstand zum Umriss
+      const d = out > 0 ? 1 + out : (v / hw) * 0.5 + (u / hl) * 0.25;
+      if (d < bestD) { bestD = d; best = tv.id; }
     }
     if (best >= 0) this.hooks.onTap?.(best);
   }

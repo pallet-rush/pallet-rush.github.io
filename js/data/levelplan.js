@@ -13,7 +13,14 @@
 //  Rätsel bleibt, sind die Zielbänder deutlich niedriger und der Spielraum knapper.
 // Das erste Level jeder Welt ist leichter (neue Mechanik lernen).
 
-const base = { ramps: 4, playouts: 60, slack: 2 };
+// minCell: Feldgröße im Hochformat mindestens 24 px → LKWs groß genug zum Antippen (ab v0.5.4)
+const base = { ramps: 4, playouts: 60, slack: 2, minCell: 24 };
+
+// Ab v0.5.4: höchste Gewinnquote eines simulierten Spielers, der 2 Züge vorausdenkt.
+// Vorher gewann er Welt 1–2 fast immer – so leicht fühlten sich die Level auch an.
+const W1_HUMAN = [1, 1, 0.75, 0.65, 0.55, 0.5, 0.45, 0.4, 0.35, 0.25];
+const W1_HUMAN_LO = [0, 0, 0.25, 0.2, 0.15, 0.12, 0.1, 0.1, 0.06, 0];
+const R_MAX = 5.0;
 
 // Formen-Reihenfolge: keine zwei gleichen hintereinander
 const SHAPE_CYCLE = [
@@ -49,7 +56,7 @@ const WORLD1 = [
   { shape: 'blob', angle: 0, R: 4.8, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 6], stay: 0.45, deep: 0.35, target: [0.22, 0.45], slack: 1 },
   { shape: 'triangle', angle: 0, R: 5.0, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 5], stay: 0.45, deep: 0.35, target: [0.2, 0.42], slack: 1 },
   { shape: 'ring', angle: 0, R: 5.2, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 5], stay: 0.4, deep: 0.4, target: [0.12, 0.35], slack: 0 },
-].map((p, i) => ({ ...base, ...p, ...W1_HARD[i] }));
+].map((p, i) => ({ ...base, ...p, ...W1_HARD[i], human: W1_HUMAN[i], humanLo: W1_HUMAN_LO[i], R: Math.min(R_MAX, p.R) }));
 
 // Welten 2–10: Parameter folgen einer Kurve, plus die Mechanik der Welt.
 function worldLevel(w, j) {
@@ -57,13 +64,19 @@ function worldLevel(w, j) {
   const intro = j === 0;
   const k = intro ? 0 : j;
   const lvl = w + k * 0.1; // grobe Stufe 1 … 10
+  // Spätere Welten dürfen etwas kleinere Felder haben (mehr LKWs passen hinein)
+  const minCell = w <= 2 ? 24 : w <= 5 ? 23 : 22;
+  const rMax = (R_MAX * 24) / minCell;
   const p = {
     ...base,
+    minCell,
+    // Mindestens so viele LKWs, damit späte Level nicht dünn wirken
+    minTrucks: intro ? 8 + w : 9 + w + Math.floor(k / 4),
     shape: SHAPE_CYCLE[(n * 5) % SHAPE_CYCLE.length],
     angle: 0,
     // Kreuz und quer: Anteil schräg gestellter LKWs steigt Welt für Welt
     chaos: intro ? Math.max(0, 0.1 * (w - 2)) : Math.min(0.85, Math.max(0, 0.1 * w + 0.02 * k - 0.1)),
-    R: Math.min(6.4, 4.4 + lvl * 0.22 + (intro ? -0.4 : 0)),
+    R: Math.min(rMax, 4.3 + lvl * 0.17 + (intro ? -0.2 : 0)),
     density: Math.min(0.82, 0.66 + lvl * 0.018),
     maxTrucks: 34,
     colors: Math.min(8, 6 + Math.floor(lvl / 3) - (intro ? 1 : 0)),
@@ -72,17 +85,26 @@ function worldLevel(w, j) {
     stay: Math.max(0.15, 0.45 - lvl * 0.03),
     deep: Math.min(0.75, 0.35 + lvl * 0.04),
     // Jedes 3. Level ist knackiger (weniger Spielraum), das 10. ist ein Boss-Level.
-    slack: intro ? 1 : 0,
+    slack: 0,
     // Fallen: steigen pro Welt; jedes 3. Level eine mehr, Boss-Level (10.) drei mehr
     traps: intro ? 2 : Math.min(7, 2 + Math.floor(w / 2) + (j % 3 === 2 ? 1 : 0) + (j === 9 ? 3 : 0)),
+    // Simulierter Spieler (2 Züge Vorausschau) darf höchstens so oft gewinnen
+    human: intro
+      ? Math.max(0.3, 0.6 - w * 0.03)
+      : j === 9
+        ? 0.1
+        : Math.max(0.12, 0.45 - w * 0.03 - k * 0.015),
+    humanLo: intro ? 0.15 : j === 9 ? 0 : Math.max(0, 0.12 - w * 0.015),
     target: intro
       ? [0.4, 0.75]
       : j === 9
         ? [Math.max(0.03, 0.15 - w * 0.01), Math.max(0.15, 0.3 - w * 0.015)]
         : [Math.max(0.08, 0.38 - k * 0.02 - w * 0.02), Math.max(0.25, 0.7 - k * 0.025 - w * 0.03)],
   };
+  // Dreiecke bieten zu wenig Platz für die schweren späten Level
+  if (w >= 5 && p.shape === 'triangle') p.shape = 'blob';
   // Ringe und Kreuze haben wenig Fläche: etwas größer
-  if (p.shape === 'ring' || p.shape === 'cross' || p.shape === 'star') p.R = Math.min(6.6, p.R + 0.5);
+  if (p.shape === 'ring' || p.shape === 'cross' || p.shape === 'star') p.R = Math.min(rMax + 0.4, p.R + 0.4);
   // Mechanik der Welt (stark) und frühere Mechaniken (gelegentlich)
   if (w === 1) p.hidden = 0.35 + k * 0.03; else if (w > 1 && j % 3 === 1) p.hidden = 0.25;
   if (w === 2) { p.gates = k >= 5 ? 2 : 1; p.gateQ = [2, 3]; } else if (w > 2 && j % 3 === 2) { p.gates = 1; p.gateQ = [2, 2]; }

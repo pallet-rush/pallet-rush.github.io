@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 10.11.2026 · Version 0.5.3
+Stand: 10.11.2026 · Version 0.5.4
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -174,8 +174,8 @@ mit Münzen kaufen.
    Spiellogik und legt dabei die Paletten-Schlange fest. Die gespielte Lösung
    wird mitgespeichert (`sol`) und beim Prüfen nachgespielt. Jedes Level ist
    damit garantiert ohne Boni lösbar.
-3. **Spielraum** (ab v0.5.0): Nur Level 1–2 lassen Rampen frei, Welt-Einstiegslevel
-   eine; alle anderen Level keine.
+3. **Spielraum**: Nur Level 1–2 lassen Rampen frei; alle anderen Level keine
+   (ab v0.5.4 auch die Welt-Einstiegslevel nicht mehr).
 4. **Schwierigkeit über Fallen** (ab v0.5.0): Die alte Messung (Erfolgsquote
    simulierter Spieler) passte nicht – Spieler schafften alles beim ersten Versuch,
    und der Solver löste jedes Level ohne einen einzigen Rückschritt. Jetzt wird entlang
@@ -184,6 +184,18 @@ mit Münzen kaufen.
    Falle. Mindestzahl: Level 1–2: 0, Level 3–5: 1, 6–8: 2, 9: 3, 10: 4; danach je
    Welt 2 + ⌊Welt/2⌋, jedes 3. Level +1, Boss-Level +3 (höchstens 7).
    Farben: Level 1: 2, Level 2: 3, Level 3–4: 4, Level 5–6: 5, ab Level 7 sechs, ab Welt 4 sieben, ab Welt 7 alle acht.
+   **Zusätzlich ab v0.5.4: simulierter Spieler.** Ein Testspieler, der den
+   naheliegenden LKW nimmt, aber Züge meidet, die innerhalb von 2 Zügen sicher
+   verlieren, spielt jedes Level 16-mal. Seine Gewinnquote muss in einem Band
+   liegen: Level 3: 25–75 %, dann sinkend bis Level 10: 0–25 %; Welt 2: höchstens
+   42 %, danach pro Welt rund 3 Punkte weniger (mindestens 12 %), Boss-Level
+   höchstens 10 %. Eine Untergrenze verhindert unfair schwere Level. Vorher gewann
+   dieser Spieler Welt 1–2 fast immer – genau so leicht fühlten sie sich an.
+   Ergebnis v0.5.4 (Gewinnquote Ø je Welt): W1 56 %, W2 32 %, W3 15 %, W4 20 %,
+   W5 18 %, W6 23 %, W7 13 %, W8 9 %, W9 5 %, W10 4 %. Mindest-LKW-Zahl je Welt
+   (`minTrucks`), Dreiecke ab Welt 6 werden zum Blob (zu wenig Platz). Die
+   Mindest-Feldgröße sinkt in späten Welten leicht (Welt 1–3: 24 px, 4–6: 23 px,
+   7–10: 22 px), damit genug LKWs hineinpassen.
 5. Ausgeliefert werden nur Level, die alle Prüfungen bestehen. Ein Prüf-Tool
    kann jederzeit den gesamten Levelbestand neu verifizieren.
 
@@ -233,7 +245,11 @@ mit Münzen kaufen.
 - Einheitlicher, cleaner Stil: ruhige, helle Flächen, sehr kräftige reine
   Farben, plastische 3D-Objekte mit Licht von oben links und weichen
   Schatten nach rechts unten; keine Rausch-Texturen.
-- LKWs im Hof berühren sich nie (Maßstab 0,77 des Rasters).
+- LKWs im Hof berühren sich nie (Maßstab 0,9 des Rasters, ab v0.5.4; vorher 0,77).
+- Damit die LKWs gut antippbar bleiben, ist ein Feld im Hochformat mindestens
+  24 px groß (iPhone-Maß, Hof 300 × 204 px). Der Generator verwirft Level, deren
+  Stau dafür zu breit oder zu hoch ist. Ein Tipp zählt auch knapp neben einem
+  LKW (bis ein gutes halbes Feld); dann gilt der nächstgelegene LKW.
 - Boni als runde, glänzende Medaillen-Buttons; alle Buttons metallisch
   glänzend mit Lichtreflex.
 - Spielgefühl: Bildschirmwackeln bei Ruck/Abfahrt, Konfetti bei vollem LKW,

@@ -60,6 +60,7 @@ async function generate(from = 1, to = LEVEL_PLAN.length) {
       continue;
     }
     levels[i] = { id: i + 1, ...res.level };
+    (window.genStats ||= {})[i + 1] = { ...res.stats, n: res.level.trucks.length, ms };
     row(i, levels[i], res.seed, levels[i].w + '×' + levels[i].h + ' ' + (p.shape || '') + ' ' + (p.angle || 0) + '°', res.stats.rate, res.stats.moves, true, `${ms} ms`);
   }
   const failed = window.genFailed.length;

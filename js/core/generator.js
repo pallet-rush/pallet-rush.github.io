@@ -21,11 +21,17 @@
 //   target: [min, max]         Erfolgsquote simulierter Spieler (smart = wie umsichtig)
 //   hidden, gates, gateQ, barriers, barrierN, rush, chains, covered, turntables
 //   chaos                      Anteil frei (schräg, kreuz und quer) gestellter LKWs
+//   human                      höchste Gewinnquote eines simulierten, 2 Züge
+//                              vorausdenkenden Spielers (ab v0.5.4; niedrig = schwer)
+//   humanLo                    … und mindestens so oft (sonst unfair schwer)
+//   minTrucks                  Mindestzahl an LKWs
+//   minCell                    Mindest-Feldgröße im Hochformat (px), damit die LKWs
+//                              groß genug zum Antippen bleiben
 
 import { DIRS, SIZES, LOT, GONE, WAIT } from './constants.js';
 import { makeRng } from './rng.js';
 import { Game, validateLevel } from './model.js';
-import { playoutRate, trapStats } from './solver.js';
+import { playoutRate, trapStats, humanRate } from './solver.js';
 import { truckPoly, rectPoly, gatePoly, rasterCells, polyOverlap, bodyLen, BODY_W } from './geom.js';
 
 const DIR_KEYS = ['U', 'D', 'L', 'R'];
@@ -457,16 +463,42 @@ export function hasMechanic(lv, m) {
   }
 }
 
+// Hof-Fläche im Hochformat (virtuelle px, iPhone-Maß). Siehe view.js layout().
+const LOT_PX = { w: 300, h: 204 };
+// Ausdehnung aller belegten Felder (wie die Darstellung sie einpasst) → Feldgröße
+export function lotCell(lv) {
+  const g = new Game(lv);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  const add = (x, y) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x + 1); y0 = Math.min(y0, y); y1 = Math.max(y1, y + 1); };
+  for (const t of g.trucks) for (const [x, y] of g.cells(t)) add(x, y);
+  for (const gt of g.gates) { const [dx, dy] = DIRS[gt.d]; add(gt.x, gt.y); add(gt.x - dx * 1.6, gt.y - dy * 1.6); }
+  for (const b of g.barriers) for (const [x, y] of b.cells) add(x, y);
+  return Math.min(30, LOT_PX.w / (x1 - x0), LOT_PX.h / (y1 - y0));
+}
+
 /** Sucht einen Seed, der alle Prüfungen besteht. */
 export function findLevel(p, startSeed, { maxTries = 300 } = {}) {
   let [lo, hi] = p.target || [0, 1];
   let best = null;
+  const p0 = p;
+  let cellFails = 0, easyFails = 0, smallFails = 0;
   for (let i = 0; i < maxTries; i++) {
+    // Passt der Stau zu oft nicht auf den Bildschirm, wird er schrittweise kleiner;
+    // ist das Level zu oft zu leicht, parkt die Referenz-Partie mehr LKWs gleichzeitig.
+    const ez = Math.floor(easyFails / 20);
+    p = { ...p0,
+      R: cellFails >= 12 ? p0.R * Math.max(0.7, 1 - 0.04 * Math.floor(cellFails / 12)) : p0.R,
+      stay: (p0.stay ?? 0.5) * Math.pow(0.7, ez),
+      deep: Math.min(0.9, (p0.deep ?? 0.3) + 0.1 * ez),
+    };
     if (i > maxTries / 2 && i % 30 === 0) { lo = Math.max(0, lo - 0.05); hi = Math.min(1, hi + 0.05); }
     const seed = startSeed + i;
     const lv = buildLevel(p, seed);
     if (!lv) continue;
     if (validateLevel(lv).length) continue;
+    // Zu wenige LKWs? (Grenze sinkt langsam, falls die Form nicht mehr hergibt)
+    if (p.minTrucks && lv.trucks.length < p.minTrucks - Math.floor(smallFails / 40)) { smallFails++; continue; }
+    if (p.minCell && lotCell(lv) < p.minCell) { cellFails++; continue; }
     if (p.require && p.require !== 'rush' && !hasMechanic(lv, p.require)) continue;
     if (p.rush) addRush(lv, lv.sol, makeRng(seed * 31), p.rush);
     if (!replaySolution(lv)) continue;
@@ -475,13 +507,24 @@ export function findLevel(p, startSeed, { maxTries = 300 } = {}) {
     // Schwierigkeit über Fallen (ab v0.5.0): Stellen, an denen der naheliegende Zug
     // das Level unlösbar macht. Die Erfolgsquote simulierter Spieler war kein gutes
     // Maß – echte Spieler gewannen trotzdem alles beim ersten Versuch.
+    // Ab v0.5.4 zusätzlich: Ein simulierter Spieler, der 2 Züge vorausdenkt, darf
+    // höchstens `human` seiner Partien gewinnen. Sonst schafft man das Level nebenbei.
     if (p.traps != null) {
+      const hr = p.human != null ? humanRate(lv, 16, seed, 2, 2) : 0;
+      const hLo = p.humanLo ?? 0;
+      if (p.human != null && hr > p.human) easyFails++;
+      if (p.human != null && (hr > p.human + 0.35 || hr < hLo - 0.2)) continue;
       const ts = trapStats(lv);
       if (!ts.won) continue;
       res.stats.traps = ts.traps;
       res.stats.fatal = +ts.fatal.toFixed(2);
-      if (ts.traps >= p.traps && ts.traps <= (p.trapsMax ?? 99)) return res;
-      if (ts.traps <= (p.trapsMax ?? 99) && (!best || ts.traps > best.stats.traps)) best = { ...res, dist: 0 };
+      res.stats.human = +hr.toFixed(2);
+      const tMax = p.trapsMax ?? 99;
+      const okH = p.human == null || (hr <= p.human && hr >= hLo);
+      if (ts.traps >= p.traps && ts.traps <= tMax && okH) return res;
+      const hd = p.human == null ? 0 : Math.max(0, hr - p.human, hLo - hr);
+      const score = hd * 10 + Math.max(0, p.traps - ts.traps);
+      if (ts.traps <= tMax && (!best || score < best.score)) best = { ...res, dist: 0, score };
       continue;
     }
     if (rate >= lo && rate <= hi) return res;
@@ -489,6 +532,6 @@ export function findLevel(p, startSeed, { maxTries = 300 } = {}) {
     const dist = rate < lo ? lo - rate : rate - hi;
     if (!best || dist < best.dist) best = { ...res, dist };
   }
-  if (p.traps != null) return best && best.stats.traps >= p.traps - 1 ? best : null;
+  if (p.traps != null) return best && best.stats.traps >= p.traps - 1 && (p.human == null || (best.stats.human <= p.human + 0.2 && best.stats.human >= (p.humanLo ?? 0) - 0.15)) ? best : null;
   return best && best.dist < 0.2 ? best : null;
 }
