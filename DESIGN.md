@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 10.11.2026 · Version 0.4.4
+Stand: 10.11.2026 · Version 0.4.5
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -186,7 +186,8 @@ mit Münzen kaufen.
   Draufsicht. Von oben nach unten: Halle mit zwei Toren → gerade
   Zulieferbänder → rundes Förderband mit 3 gleich aussehenden, gelb markierten
   Ausläufen (je eine Reihe aus 4 Paletten; Mitte = Bandende unten, links/rechts
-  kurz davor) → je eine Rollenrutsche hinunter zur Rollenbahn (läuft von der Mitte
+  direkt daneben, jede Rutsche genau darunter). Palettenreihen werden so dicht wie
+  möglich gelegt, überschneiden sich aber auch in der engen Kurve nie → je eine Rollenrutsche hinunter zur Rollenbahn (läuft von der Mitte
   nach links und rechts) → je eine Rutsche in jede Parkbucht → Parkbuchten → Ringstraße (Einbahn im Uhrzeigersinn) → Stau im Inneren.
 - Der Stau ist ein freier, dichter Haufen ohne Rasterlinien auf hellem Beton,
   in wechselnden Formen und auch schräg.

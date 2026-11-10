@@ -34,7 +34,7 @@ const PALLET = 12; // Palettengröße auf den Bändern
 const GAP = 18; // (alt) Abstand der Paletten auf einer Spur
 const COLS = 4; // Paletten nebeneinander auf einem Band (= ein Block)
 const WINDOW = 3; // Ausgabeplätze: links, Mitte, rechts
-const SLOT_D = 42; // Abstand der seitlichen Ausgabeplätze vom Bandende (Mitte = Bandende)
+const SLOT_CLEAR = 20; // Mindestabstand seitlicher Auslauf ↔ mittlerer Auslauf (Palettenmitten)
 const CHUTE_W = 16; // Breite der Rollenrutschen (Auslauf → Rollenbahn → Bucht)
 const COL_GAP = 13.5; // Querabstand der Spalten
 const ROW_GAP = 15; // Abstand der Reihen
@@ -1422,7 +1422,32 @@ export class GameView {
     const L = this.L;
     // Alle drei gleich: eine Reihe aus 4 Paletten quer zum Band; Mitte = Bandende unten
     if (slot === 'C') return this.lanePos(0, 0, k);
-    return this.lanePos(slot === 'L' ? 0 : 1, SLOT_D, k);
+    return this.lanePos(slot === 'L' ? 0 : 1, this.rowDists(slot === 'L' ? 0 : 1)[0], k);
+  }
+  // Abstände der Palettenreihen je Spur (vom Bandende gemessen). [0] = seitlicher Auslauf,
+  // so nah an der Mitte wie möglich ohne Überschneidung mit dem mittleren Auslauf;
+  // danach so dicht wie möglich, aber auch in der engen Kurve ohne Überschneidung.
+  rowDists(lane) {
+    if (this._rdKey !== this.L) { this._rdKey = this.L; this._rd = []; }
+    if (this._rd[lane]) return this._rd[lane];
+    const ln = this.L.lanes[lane];
+    const row = (d) => { const r = []; for (let k = 0; k < COLS; k++) r.push(this.lanePos(lane, d, k)); return r; };
+    const minD = (a, b) => { let m = Infinity; for (const p of a) for (const q of b) m = Math.min(m, Math.hypot(p.x - q.x, p.y - q.y)); return m; };
+    const center = row(0);
+    let d = 8;
+    while (d < 80 && minD(row(d), center) < SLOT_CLEAR) d += 0.5;
+    const out = [d];
+    let prev = row(d);
+    while (d < ln.length - 6) {
+      let nd = d + ROW_GAP - 2;
+      while (nd < ln.length && minD(row(nd), prev) < PALLET + 1.4) nd += 0.5;
+      if (nd >= ln.length - 6) break;
+      out.push(nd);
+      prev = row(nd);
+      d = nd;
+    }
+    this._rd[lane] = out;
+    return out;
   }
   lanePos(lane, dist, k) {
     const ln = this.L.lanes[lane];
@@ -1486,8 +1511,8 @@ export class GameView {
     const cnt = [1, 1];
     for (const b of rest) {
       const ln = laneOf[b];
-      const dist = SLOT_D + cnt[ln]++ * ROW_GAP;
-      if (dist > this.L.lanes[ln].length - 6) continue;
+      const dist = this.rowDists(ln)[cnt[ln]++];
+      if (dist === undefined) continue;
       for (let k = 0; k < COLS; k++) target.push([b * COLS + k, this.lanePos(ln, dist, k), false]);
     }
     // Weich nachrücken
