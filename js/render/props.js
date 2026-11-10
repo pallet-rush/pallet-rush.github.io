@@ -2697,64 +2697,90 @@ export function drawGarage(ctx, x, y, angle = Math.PI / 2, cell = 30, o = {}) {
 }
 
 // Schranke auf einem Feld. o = { open: 0..1, count } (count = noch nötige Abfahrten)
+// Aufbau wie eine echte Schranke: hohe Antriebssäule links, dicker rot-weißer
+// Schlagbaum über die ganze Spur, Auflagepfosten rechts. Höhe passend zu den LKWs.
 export function drawBarrier(ctx, x, y, cell = 30, o = {}) {
   const open = Math.max(0, Math.min(1, o.open || 0));
-  const S = cell * 0.94, L = x - S / 2, T = y - S / 2;
+  const S = cell, L = x - S / 2, T = y - S / 2, R = x + S / 2;
   ctx.save();
-  // Sperrfläche
+  // Bodenfläche mit Warnstreifen
   ctx.save();
   ctx.beginPath();
-  rr(ctx, L + 1, T + 1, S - 2, S - 2, cell * 0.08);
+  rr(ctx, L + 1, T + 1, S - 2, S - 2, cell * 0.1);
   ctx.clip();
-  ctx.globalAlpha = 0.85 - open * 0.55;
-  hazard(ctx, L, T, S, S, cell * 0.11, '#ffcc00', '#2b2e35');
+  ctx.globalAlpha = 0.75 - open * 0.45;
+  hazard(ctx, L, T, S, S, cell * 0.14, '#ffcc00', '#2b2e35');
   ctx.restore();
-  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-  ctx.lineWidth = Math.max(1, cell * 0.04);
-  ctx.beginPath();
-  rr(ctx, L + 1, T + 1, S - 2, S - 2, cell * 0.08);
-  ctx.stroke();
-  // Auflagepfosten rechts
-  box(ctx, L + S * 0.8, y - S * 0.08, S * 0.12, S * 0.08, S * 0.12, '#e9edf2', '#8f99a5', 1);
-  // Antriebssäule links
-  const pw = S * 0.22;
-  box(ctx, L + S * 0.03, y - S * 0.2, pw, pw * 0.75, S * 0.22, '#ff3b30', '#a8160d', cell * 0.04);
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.fillRect(L + S * 0.05, y - S * 0.19, pw - S * 0.04, Math.max(0.8, cell * 0.03));
+  // Haltelinie unter dem Baum
+  ctx.fillStyle = `rgba(255,255,255,${0.8 - open * 0.5})`;
+  ctx.fillRect(L + S * 0.08, y + S * 0.16, S * 0.84, Math.max(1.5, S * 0.07));
+
+  const H = S * 0.5;                      // Höhe der Säule
+  const pw = S * 0.3, pd = S * 0.26;      // Grundfläche der Säule
+  const gx = L - S * 0.02, gy = y - pd / 2 + S * 0.14;
+  const hb = H * 0.62;                    // Höhe des Schlagbaums über dem Boden
+  const bw = Math.max(3, S * 0.17);
+  // Schatten
+  softShadow(ctx, gx + pw / 2 + S * 0.06, gy + pd + S * 0.02, pw * 0.75, pd * 0.45, 0.35);
+  const restX = R - S * 0.15, restW = S * 0.12, restH = hb - bw * 0.35;
+  softShadow(ctx, restX + restW / 2 + S * 0.03, gy + pd, restW, restW * 0.4, 0.3);
+
+  // Auflagepfosten rechts (gelb)
+  const ry = gy + pd / 2 - restW / 2;
+  box(ctx, restX, ry - restH, restW, restW, restH, '#ffd23a', '#c99700', cell * 0.03);
+  ctx.fillStyle = '#2b2e35';
+  ctx.fillRect(restX, ry - restH + restW + restH * 0.4, restW, restH * 0.16);
+
   // Schlagbaum
-  const px = L + S * 0.14, py = y - S * 0.12;
-  const len = S * 0.8;
-  const a = -open * Math.PI * 0.42;
-  const tx = px + Math.cos(a) * len, ty = py + Math.sin(a) * len * 1.05;
-  const bw = Math.max(2.5, cell * 0.12);
+  const px = gx + pw * 0.62, py = gy + pd / 2 - hb;
+  const len = R + S * 0.02 - px;
+  const ang = -open * Math.PI * 0.44;
+  const c = Math.cos(ang), sn = Math.sin(ang);
+  // Schatten des Baums auf dem Boden
+  ctx.strokeStyle = `rgba(20,25,30,${0.22 * (1 - open)})`;
+  ctx.lineWidth = bw * 0.9;
   ctx.lineCap = 'round';
-  ctx.strokeStyle = 'rgba(20,25,30,0.25)';
-  ctx.lineWidth = bw;
-  ctx.beginPath(); ctx.moveTo(px + 2, py + 4 + open * cell * 0.25); ctx.lineTo(tx + 2 + open * 2, ty + 4 + open * cell * 0.5); ctx.stroke();
-  ctx.lineCap = 'butt';
-  const segs = 6;
-  for (let i = 0; i < segs; i++) {
-    ctx.strokeStyle = i % 2 ? '#ffffff' : '#ff0a1e';
-    ctx.lineWidth = bw;
+  ctx.beginPath(); ctx.moveTo(px, gy + pd); ctx.lineTo(px + c * len, gy + pd); ctx.stroke();
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate(ang);
+  // Rumpf mit Rand
+  ctx.beginPath(); rr(ctx, -bw * 0.4, -bw / 2, len + bw * 0.4, bw, bw / 2);
+  ctx.fillStyle = '#ffffff'; ctx.fill();
+  ctx.save(); ctx.clip();
+  const segs = 5, sl = len / segs;
+  ctx.fillStyle = '#ff1f2d';
+  for (let i = 0; i < segs; i += 2) {
     ctx.beginPath();
-    ctx.moveTo(px + (tx - px) * (i / segs), py + (ty - py) * (i / segs));
-    ctx.lineTo(px + (tx - px) * ((i + 1) / segs), py + (ty - py) * ((i + 1) / segs));
-    ctx.stroke();
+    ctx.moveTo(i * sl + bw * 0.3, -bw); ctx.lineTo((i + 1) * sl + bw * 0.3, -bw);
+    ctx.lineTo((i + 1) * sl - bw * 0.3, bw); ctx.lineTo(i * sl - bw * 0.3, bw);
+    ctx.fill();
   }
-  ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-  ctx.lineWidth = 0.7;
-  const nx = -(ty - py) / len, ny = (tx - px) / len;
-  ctx.beginPath();
-  ctx.moveTo(px + nx * bw / 2, py + ny * bw / 2);
-  ctx.lineTo(tx + nx * bw / 2, ty + ny * bw / 2);
-  ctx.stroke();
-  circle(ctx, px, py, bw * 0.75, '#2b2e35');
-  circle(ctx, px, py, bw * 0.3, '#c9d1da');
-  // Signallicht
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.fillRect(-bw, bw * 0.15, len + bw * 2, bw);
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillRect(-bw, -bw / 2, len + bw * 2, bw * 0.18);
+  ctx.restore();
+  ctx.lineWidth = Math.max(1, S * 0.03);
+  ctx.strokeStyle = 'rgba(60,15,15,0.55)';
+  ctx.beginPath(); rr(ctx, -bw * 0.4, -bw / 2, len + bw * 0.4, bw, bw / 2); ctx.stroke();
+  ctx.restore();
+
+  // Antriebssäule (rot) mit Kappe
+  box(ctx, gx, gy - H, pw, pd, H, '#ff4a3d', '#b3170d', cell * 0.06);
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.fillRect(gx + pw * 0.12, gy - H + pd + H * 0.62, pw * 0.76, Math.max(1, H * 0.1));
+  fillRR(ctx, gx + pw * 0.1, gy - H + pd * 0.12, pw * 0.8, pd * 0.4, cell * 0.03, 'rgba(255,255,255,0.3)');
+  // Drehlager vorne an der Säule
+  circle(ctx, px, py + bw * 0.1, bw * 0.55, '#2b2e35');
+  circle(ctx, px, py + bw * 0.1, bw * 0.22, '#c9d1da');
+  // Signallicht oben auf der Säule
   const lc = open >= 1 ? '#3dff7e' : '#ff3b3b';
-  circle(ctx, L + S * 0.14, y - S * 0.3, cell * 0.07, '#1d1f24');
-  circle(ctx, L + S * 0.14, y - S * 0.3, cell * 0.045, lc);
-  if (o.count != null) drawBadge(ctx, L + S - cell * 0.06, T + cell * 0.04, cell * 0.22, '#ff8a00', String(o.count));
+  const lx = gx + pw * 0.28, ly = gy - H + pd * 0.45;
+  circle(ctx, lx, ly, S * 0.085, '#1d1f24');
+  circle(ctx, lx, ly, S * 0.058, lc);
+  circle(ctx, lx - S * 0.02, ly - S * 0.02, S * 0.02, 'rgba(255,255,255,0.8)');
+  if (o.count != null) drawBadge(ctx, R - S * 0.06, T + S * 0.02, cell * 0.24, '#ff8a00', String(o.count));
   ctx.restore();
 }
 

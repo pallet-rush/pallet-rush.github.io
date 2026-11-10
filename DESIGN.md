@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 10.11.2026 · Version 0.5.2
+Stand: 10.11.2026 · Version 0.5.3
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -210,6 +210,10 @@ mit Münzen kaufen.
   graues Dach mit Oberlicht, orange Kante, offenes Tor mit Warnstreifen; die
   Zahl der wartenden LKWs steht auf dem Dach. Neue LKWs fahren unter dem
   Hallendach hervor.
+- Schranken (ab v0.5.3) sehen aus wie echte Schranken: hohe rote Antriebssäule
+  mit Signallicht (rot/grün), dicker rot-weißer Schlagbaum über die ganze Spur,
+  gelber Auflagepfosten, Warnstreifen und Haltelinie am Boden; in der Höhe
+  passend zu den LKWs. Die orange Zahl zeigt die noch nötigen Abfahrten.
 - Verkehr: LKWs fahren vorwärts aus dem Stau, ordnen sich auf der Ringstraße
   ein, setzen rückwärts in ihre Bucht und fahren nach rechts ab. Vorfahrt hat,
   wer zuerst losgefahren ist; niemand fährt ineinander.
