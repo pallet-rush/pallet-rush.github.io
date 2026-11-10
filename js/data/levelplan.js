@@ -20,6 +20,22 @@ const SHAPE_CYCLE = [
   'ring', 'hourglass', 'arrow', 'wave', 'rect',
 ];
 
+// Ab v0.5.0: Schwierigkeit über Fallen statt Erfolgsquote. traps = Mindestzahl an
+// Stellen, an denen einer der zwei naheliegendsten Züge das Level unlösbar macht.
+// Dazu mehr Farben (bis 8) und kein Spielraum (slack 0) außer in den ersten Leveln.
+const W1_HARD = [
+  { colors: 2, traps: 0 },
+  { colors: 3, traps: 0 },
+  { colors: 4, traps: 1, slack: 0 },
+  { colors: 4, traps: 1, slack: 0 },
+  { colors: 5, traps: 1, slack: 0 },
+  { colors: 5, traps: 2, slack: 0 },
+  { colors: 6, traps: 2, slack: 0 },
+  { colors: 6, traps: 2, slack: 0 },
+  { colors: 6, traps: 3, slack: 0 },
+  { colors: 6, traps: 4, slack: 0 },
+];
+
 // Welt 1: Grundkurs (handverlesen)
 const WORLD1 = [
   { shape: 'rect', angle: 0, R: 2.6, density: 0.55, colors: 2, mix: { S: 1 }, chunk: [4, 8], stay: 0.7, deep: 0, target: [0.85, 1], slack: 2 },
@@ -32,7 +48,7 @@ const WORLD1 = [
   { shape: 'blob', angle: 0, R: 4.8, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 6], stay: 0.45, deep: 0.35, target: [0.22, 0.45], slack: 1 },
   { shape: 'triangle', angle: 0, R: 5.0, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 5], stay: 0.45, deep: 0.35, target: [0.2, 0.42], slack: 1 },
   { shape: 'ring', angle: 45, R: 5.2, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 5], stay: 0.4, deep: 0.4, target: [0.12, 0.35], slack: 0 },
-].map((p) => ({ ...base, ...p }));
+].map((p, i) => ({ ...base, ...p, ...W1_HARD[i] }));
 
 // Welten 2–10: Parameter folgen einer Kurve, plus die Mechanik der Welt.
 function worldLevel(w, j) {
@@ -47,13 +63,15 @@ function worldLevel(w, j) {
     R: Math.min(6.4, 4.4 + lvl * 0.22 + (intro ? -0.4 : 0)),
     density: Math.min(0.82, 0.66 + lvl * 0.018),
     maxTrucks: 34,
-    colors: Math.min(8, 4 + Math.floor(lvl / 2.2)),
+    colors: Math.min(8, 6 + Math.floor(lvl / 3) - (intro ? 1 : 0)),
     mix: { S: 3, M: 2, L: 1 + lvl * 0.08 },
     chunk: [Math.max(1, 3 - Math.floor(lvl / 4)), Math.max(3, 6 - Math.floor(lvl / 3))],
     stay: Math.max(0.15, 0.45 - lvl * 0.03),
     deep: Math.min(0.75, 0.35 + lvl * 0.04),
     // Jedes 3. Level ist knackiger (weniger Spielraum), das 10. ist ein Boss-Level.
-    slack: intro ? 1 : j === 9 || j % 3 === 2 ? 0 : 1,
+    slack: intro ? 1 : 0,
+    // Fallen: steigen pro Welt; jedes 3. Level eine mehr, Boss-Level (10.) drei mehr
+    traps: intro ? 2 : Math.min(7, 2 + Math.floor(w / 2) + (j % 3 === 2 ? 1 : 0) + (j === 9 ? 3 : 0)),
     target: intro
       ? [0.4, 0.75]
       : j === 9

@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 10.11.2026 · Version 0.4.9
+Stand: 10.11.2026 · Version 0.5.0
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -168,16 +168,16 @@ mit Münzen kaufen.
    Spiellogik und legt dabei die Paletten-Schlange fest. Die gespielte Lösung
    wird mitgespeichert (`sol`) und beim Prüfen nachgespielt. Jedes Level ist
    damit garantiert ohne Boni lösbar.
-3. **Spielraum**: Die Referenz-Partie lässt in Level 1–2 zwei Rampen frei,
-   sonst meist eine; jedes 3. Level und die Boss-Level (x0) keine.
-   Seit v0.3.2 (3 Ausgabeplätze) sind die Zielbänder deutlich niedriger, damit
-   jedes Level ein echtes Rätsel bleibt (Level 1 ≈ 85–100 %, Level 10 ≈ 12–35 %,
-   späte Boss-Level unter 15 %).
-4. **Schwierigkeitskurve**: Für jedes Level werden 60 Partien eines
-   simulierten, umsichtigen Spielers gespielt. Die Erfolgsquote muss in einem
-   Zielband liegen (früh leicht, später anspruchsvoll, Verschnauf-Level nach
-   jeder neuen Mechanik). Mehr LKWs, mehr Farben, dichterer Stau und
-   kleinere Farb-Pakete in der Schlange machen es schwerer.
+3. **Spielraum** (ab v0.5.0): Nur Level 1–2 lassen Rampen frei, Welt-Einstiegslevel
+   eine; alle anderen Level keine.
+4. **Schwierigkeit über Fallen** (ab v0.5.0): Die alte Messung (Erfolgsquote
+   simulierter Spieler) passte nicht – Spieler schafften alles beim ersten Versuch,
+   und der Solver löste jedes Level ohne einen einzigen Rückschritt. Jetzt wird entlang
+   der Lösung an jeder Stelle geprüft, ob einer der zwei naheliegendsten Züge (Farbe am
+   Auslauf / bald auf dem Band) das Level unlösbar macht. Jede solche Stelle ist eine
+   Falle. Mindestzahl: Level 1–2: 0, Level 3–5: 1, 6–8: 2, 9: 3, 10: 4; danach je
+   Welt 2 + ⌊Welt/2⌋, jedes 3. Level +1, Boss-Level +3 (höchstens 7).
+   Farben: Level 3 schon 4, ab Level 7 sechs, ab Welt 4 sieben, ab Welt 7 alle acht.
 5. Ausgeliefert werden nur Level, die alle Prüfungen bestehen. Ein Prüf-Tool
    kann jederzeit den gesamten Levelbestand neu verifizieren.
 

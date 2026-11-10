@@ -24,7 +24,7 @@
 import { DIRS, SIZES, LOT, GONE, WAIT } from './constants.js';
 import { makeRng } from './rng.js';
 import { Game, validateLevel } from './model.js';
-import { playoutRate } from './solver.js';
+import { playoutRate, trapStats } from './solver.js';
 
 const DIR_KEYS = ['U', 'D', 'L', 'R'];
 
@@ -447,10 +447,23 @@ export function findLevel(p, startSeed, { maxTries = 300 } = {}) {
     if (!replaySolution(lv)) continue;
     const rate = playoutRate(lv, p.playouts || 60, seed, p.smart ?? 0.85);
     const res = { level: lv, seed, stats: { rate: +rate.toFixed(2), moves: lv.sol.length } };
+    // Schwierigkeit über Fallen (ab v0.5.0): Stellen, an denen der naheliegende Zug
+    // das Level unlösbar macht. Die Erfolgsquote simulierter Spieler war kein gutes
+    // Maß – echte Spieler gewannen trotzdem alles beim ersten Versuch.
+    if (p.traps != null) {
+      const ts = trapStats(lv);
+      if (!ts.won) continue;
+      res.stats.traps = ts.traps;
+      res.stats.fatal = +ts.fatal.toFixed(2);
+      if (ts.traps >= p.traps && ts.traps <= (p.trapsMax ?? 99)) return res;
+      if (ts.traps <= (p.trapsMax ?? 99) && (!best || ts.traps > best.stats.traps)) best = { ...res, dist: 0 };
+      continue;
+    }
     if (rate >= lo && rate <= hi) return res;
     // Notfalls das Level, das dem Zielband am nächsten kommt
     const dist = rate < lo ? lo - rate : rate - hi;
     if (!best || dist < best.dist) best = { ...res, dist };
   }
+  if (p.traps != null) return best && best.stats.traps >= p.traps - 1 ? best : null;
   return best && best.dist < 0.2 ? best : null;
 }

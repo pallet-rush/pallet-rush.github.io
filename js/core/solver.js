@@ -48,8 +48,8 @@ function countDependents(g) {
  * Tiefensuche mit Zustands-Cache.
  * @returns {{solvable:boolean, path:number[]|null, nodes:number, limit?:boolean}}
  */
-export function solve(level, { maxNodes = 300000 } = {}) {
-  const root = new Game(level);
+export function solve(level, { maxNodes = 300000, fromGame = false } = {}) {
+  const root = fromGame ? level.clone() : new Game(level);
   const seen = new Set();
   let nodes = 0;
 
@@ -108,4 +108,78 @@ export function playoutRate(level, n = 200, seed = 1, smart = 0.6) {
     if (g.status === 'won') wins++;
   }
   return wins / n;
+}
+
+// Menschlicher Testspieler: nimmt den naheliegenden LKW (Farbe am Auslauf / bald auf
+// dem Band, Blocker zuerst), vermeidet aber Züge, die innerhalb von `look` Zügen
+// sicher verlieren. Gewinnt dieser Spieler fast immer, ist das Level zu leicht –
+// ein echter Spieler schafft es dann „first try“ ohne nachzudenken.
+function losesSoon(g, d) {
+  if (g.status === 'lost') return true;
+  if (g.status === 'won' || d <= 0) return false;
+  for (const m of g.legalMoves()) {
+    const c = g.clone();
+    c.tap(m);
+    if (!losesSoon(c, d - 1)) return false;
+  }
+  return true;
+}
+export function humanRate(level, n = 24, seed = 1, look = 2, noise = 2) {
+  const rng = makeRng(seed * 7919 + 13);
+  let wins = 0;
+  for (let i = 0; i < n; i++) {
+    const g = new Game(level);
+    for (let guard = 0; guard < 400 && g.status === 'playing'; guard++) {
+      const moves = g.legalMoves();
+      if (!moves.length) break;
+      const dep = countDependents(g);
+      const sc = new Map(moves.map((id) => [id, moveScore(g, id, dep) + rng.next() * noise]));
+      moves.sort((a, b) => sc.get(b) - sc.get(a));
+      let pick = moves[0];
+      for (const m of moves) {
+        const c = g.clone();
+        c.tap(m);
+        if (!losesSoon(c, look - 1)) { pick = m; break; }
+      }
+      g.tap(pick);
+    }
+    if (g.status === 'won') wins++;
+  }
+  return wins / n;
+}
+
+// Fallen zählen: Entlang einer Lösung wird an jeder Stelle geprüft, ob der
+// naheliegende Zug (höchste Bewertung = was ein Spieler „nach Gefühl“ tippt)
+// das Level unlösbar macht. Jede solche Stelle ist eine Falle, bei der man
+// vorausdenken muss. fatal = Anteil aller erlaubten Züge, die verlieren.
+export function trapStats(level, path = level.sol, { maxNodes = 4000, top = 2 } = {}) {
+  const g = new Game(level);
+  let traps = 0, fatal = 0, total = 0, unknown = 0;
+  const memo = new Map();
+  const dead = (c) => {
+    const k = c.key();
+    if (memo.has(k)) return memo.get(k);
+    const r = solve(c, { maxNodes, fromGame: true });
+    const v = r.limit ? null : !r.solvable;
+    memo.set(k, v);
+    return v;
+  };
+  for (const step of path) {
+    if (g.status !== 'playing') break;
+    const moves = g.legalMoves();
+    const dep = countDependents(g);
+    moves.sort((a, b) => moveScore(g, b, dep) - moveScore(g, a, dep));
+    let trapHere = false;
+    moves.forEach((m, i) => {
+      const c = g.clone();
+      c.tap(m);
+      const d = dead(c);
+      if (d === null) { unknown++; return; }
+      total++;
+      if (d) { fatal++; if (i < top) trapHere = true; }
+    });
+    if (trapHere) traps++;
+    g.tap(step);
+  }
+  return { traps, fatal: total ? fatal / total : 0, unknown, won: g.status === 'won' };
 }
