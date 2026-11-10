@@ -2988,3 +2988,62 @@ export function drawSparkle(ctx, x, y, r, t = 0, color = '#fff6a8') {
   circle(ctx, 0, 0, rr2 * 0.18, '#ffffff');
   ctx.restore();
 }
+
+// Torhalle am Hofrand, aus der wartende LKWs herausfahren.
+// (x,y) = Mitte der Grundfläche, w×h = Grundfläche in Pixeln (achsparallel),
+// d = Richtung der Tür ('U','D','L','R'), cell = Feldgröße. o = { count, truckW }
+export function drawDepot(ctx, x, y, w, h, d, cell = 30, o = {}) {
+  const H = cell * 0.3;                 // Wandhöhe (nach unten sichtbar)
+  const L = x - w / 2, T = y - h / 2 - H * 0.5;
+  const R = cell * 0.08;
+  const horiz = d === 'L' || d === 'R';
+  ctx.save();
+  boxCastShadow(ctx, L, T, w, h, H * 1.4, 0.34);
+  // Wände (Beton)
+  const wallG = ctx.createLinearGradient(0, T + h - H, 0, T + h + H);
+  wallG.addColorStop(0, '#d9dee5');
+  wallG.addColorStop(1, '#98a3b1');
+  fillRR(ctx, L, T + H * 0.3, w, h + H * 0.7, R, wallG);
+  // Dach: graues Trapezblech mit Rippen quer zur Fahrtrichtung
+  const roofG = ctx.createLinearGradient(L, T, L + w, T + h);
+  roofG.addColorStop(0, '#eef1f5');
+  roofG.addColorStop(1, '#c3cbd6');
+  fillRR(ctx, L, T, w, h, R, roofG);
+  ctx.save();
+  ctx.beginPath();
+  rr(ctx, L, T, w, h, R);
+  ctx.clip();
+  ctx.fillStyle = 'rgba(70,85,105,0.16)';
+  const n = Math.max(4, Math.round((horiz ? w : h) / (cell * 0.2)));
+  for (let i = 1; i < n; i++) {
+    if (horiz) ctx.fillRect(L + (i * w) / n, T, Math.max(0.8, cell * 0.04), h);
+    else ctx.fillRect(L, T + (i * h) / n, w, Math.max(0.8, cell * 0.04));
+  }
+  // Oberlicht in der Mitte
+  ctx.fillStyle = 'rgba(120,190,255,0.55)';
+  if (horiz) ctx.fillRect(L + w * 0.3, y - h * 0.5 - H * 0.5 + h * 0.4, w * 0.4, h * 0.2);
+  else ctx.fillRect(L + w * 0.4, T + h * 0.3, w * 0.2, h * 0.4);
+  ctx.restore();
+  ctx.strokeStyle = '#ff8a00';
+  ctx.lineWidth = Math.max(1.2, cell * 0.07);
+  ctx.beginPath();
+  rr(ctx, L + cell * 0.035, T + cell * 0.035, w - cell * 0.07, h - cell * 0.07, R * 0.8);
+  ctx.stroke();
+  // Großes offenes Tor: so breit wie ein LKW plus Rand, Warnstreifen-Rahmen
+  const ow = Math.min((horiz ? h : w) - cell * 0.16, (o.truckW || cell * 0.65) * 1.3);
+  const dep = cell * 0.26;
+  const opening = (x0, y0, w0, h0, vert) => {
+    hazard(ctx, x0 - 2, y0 - 2, w0 + 4, h0 + 4, Math.max(1.5, cell * 0.08));
+    const g = ctx.createLinearGradient(x0, y0, vert ? x0 : x0 + w0, vert ? y0 + h0 : y0);
+    g.addColorStop(0, '#05080d');
+    g.addColorStop(1, '#273246');
+    ctx.fillStyle = g;
+    ctx.fillRect(x0 + 0.5, y0 + 0.5, w0 - 1, h0 - 1);
+  };
+  if (d === 'D') opening(x - ow / 2, T + h - dep * 0.35, ow, dep * 0.35 + H * 0.92, true);
+  else if (d === 'U') opening(x - ow / 2, T, ow, dep, true);
+  else if (d === 'R') opening(L + w - dep, T + h / 2 - ow / 2, dep, ow, false);
+  else opening(L, T + h / 2 - ow / 2, dep, ow, false);
+  if (o.count != null) drawBadge(ctx, x, T + h / 2, cell * 0.3, o.count ? '#ff0a1e' : '#22a045', String(o.count));
+  ctx.restore();
+}

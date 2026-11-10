@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 10.11.2026 · Version 0.5.0
+Stand: 10.11.2026 · Version 0.5.1
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -162,8 +162,14 @@ mit Münzen kaufen.
 ## 8. Fairness-Garantien (Level-Pipeline)
 
 1. **Generator** stanzt eine Stau-Form (Kreis, Herz, Stern, Raute, Ring, Kreuz,
-   Sanduhr, Pfeil, Welle …), gerade oder um 45° gedreht, und füllt sie dicht
-   mit LKWs – nur so, dass sich der Hof immer räumen lässt.
+   Sanduhr, Pfeil, Welle …) und füllt sie dicht mit LKWs – nur so, dass sich
+   der Hof immer räumen lässt. Der Hof steht immer gerade (ab v0.5.1; früher um
+   45° gedreht, das machte die LKWs nur kleiner). Ab Welt 2 stehen zusätzlich
+   LKWs **kreuz und quer** in beliebigem Winkel (Anteil `chaos`: Welt 2 bis
+   knapp 20 %, dann pro Welt rund +10 %, in Welt 10 bis 85 %).
+   Wer wen blockiert, wird geometrisch berechnet (`js/core/geom.js`): Ein LKW
+   kommt raus, wenn der Streifen vor ihm, so breit wie er selbst, frei ist.
+   Für LKWs im Raster ist das genau die alte Regel (Nachbarspuren stören nie).
 2. **Referenz-Partie**: Der Generator spielt das Level mit der echten
    Spiellogik und legt dabei die Paletten-Schlange fest. Die gespielte Lösung
    wird mitgespeichert (`sol`) und beim Prüfen nachgespielt. Jedes Level ist
@@ -197,7 +203,13 @@ mit Münzen kaufen.
   gleichen Abstand → je eine Rollenrutsche hinunter zur Rollenbahn (läuft von der Mitte
   nach links und rechts) → je eine Rutsche in jede Parkbucht → Parkbuchten → Ringstraße (Einbahn im Uhrzeigersinn) → Stau im Inneren.
 - Der Stau ist ein freier, dichter Haufen ohne Rasterlinien auf hellem Beton,
-  in wechselnden Formen und auch schräg.
+  in wechselnden Formen; in späteren Welten stehen viele LKWs schräg und
+  durcheinander. Der Hof wird mittig und so groß wie möglich eingepasst.
+- Torhallen (ab v0.5.1) stehen ganz außen am Stau, das Tor zeigt in den Hof.
+  Die Halle ist 1,2 Spuren breit und 2,5 Felder tief (ein LKW passt hinein),
+  graues Dach mit Oberlicht, orange Kante, offenes Tor mit Warnstreifen; die
+  Zahl der wartenden LKWs steht auf dem Dach. Neue LKWs fahren unter dem
+  Hallendach hervor.
 - Verkehr: LKWs fahren vorwärts aus dem Stau, ordnen sich auf der Ringstraße
   ein, setzen rückwärts in ihre Bucht und fahren nach rechts ab. Vorfahrt hat,
   wer zuerst losgefahren ist; niemand fährt ineinander.

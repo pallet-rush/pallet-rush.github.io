@@ -3,7 +3,8 @@
 // Bedeutung der Parameter: siehe js/core/generator.js.
 //
 // Abwechslung: Jedes Level hat eine eigene Stau-Form (Herz, Stern, Kreis …),
-// mal gerade, mal schräg (45°). Schwierigkeit steigt über
+// der Hof steht immer gerade (ab v0.5.1). Ab Welt 2 stehen immer mehr LKWs
+// kreuz und quer (chaos = Anteil frei gestellter LKWs). Schwierigkeit steigt über
 //  - mehr LKWs und Farben,
 //  - dichteren Stau,
 //  - kleinere Paletten-Pakete (die Schlange wechselt öfter die Farbe),
@@ -40,14 +41,14 @@ const W1_HARD = [
 const WORLD1 = [
   { shape: 'rect', angle: 0, R: 2.6, density: 0.55, colors: 2, mix: { S: 1 }, chunk: [4, 8], stay: 0.7, deep: 0, target: [0.85, 1], slack: 2 },
   { shape: 'circle', angle: 0, R: 3.2, density: 0.6, colors: 3, mix: { S: 3, M: 1 }, chunk: [4, 8], stay: 0.6, deep: 0.1, target: [0.7, 0.95], slack: 2 },
-  { shape: 'diamond', angle: 45, R: 3.4, density: 0.62, colors: 3, mix: { S: 3, M: 1 }, chunk: [3, 7], stay: 0.6, deep: 0.15, target: [0.5, 0.8], slack: 1 },
+  { shape: 'diamond', angle: 0, R: 3.4, density: 0.62, colors: 3, mix: { S: 3, M: 1 }, chunk: [3, 7], stay: 0.6, deep: 0.15, target: [0.5, 0.8], slack: 1 },
   { shape: 'heart', angle: 0, R: 3.8, density: 0.64, colors: 3, mix: { S: 3, M: 2 }, chunk: [3, 7], stay: 0.55, deep: 0.2, target: [0.4, 0.7], slack: 1 },
-  { shape: 'hexagon', angle: 45, R: 4.0, density: 0.66, colors: 4, mix: { S: 3, M: 2, L: 0.5 }, chunk: [3, 6], stay: 0.5, deep: 0.25, target: [0.35, 0.6], slack: 1 },
+  { shape: 'hexagon', angle: 0, R: 4.0, density: 0.66, colors: 4, mix: { S: 3, M: 2, L: 0.5 }, chunk: [3, 6], stay: 0.5, deep: 0.25, target: [0.35, 0.6], slack: 1 },
   { shape: 'star', angle: 0, R: 4.4, density: 0.66, colors: 4, mix: { S: 3, M: 2, L: 1 }, chunk: [3, 6], stay: 0.5, deep: 0.3, target: [0.3, 0.55], slack: 1 },
-  { shape: 'cross', angle: 45, R: 4.6, density: 0.68, colors: 4, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 6], stay: 0.5, deep: 0.3, target: [0.25, 0.5], slack: 1 },
+  { shape: 'cross', angle: 0, R: 4.6, density: 0.68, colors: 4, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 6], stay: 0.5, deep: 0.3, target: [0.25, 0.5], slack: 1 },
   { shape: 'blob', angle: 0, R: 4.8, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 6], stay: 0.45, deep: 0.35, target: [0.22, 0.45], slack: 1 },
   { shape: 'triangle', angle: 0, R: 5.0, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 5], stay: 0.45, deep: 0.35, target: [0.2, 0.42], slack: 1 },
-  { shape: 'ring', angle: 45, R: 5.2, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 5], stay: 0.4, deep: 0.4, target: [0.12, 0.35], slack: 0 },
+  { shape: 'ring', angle: 0, R: 5.2, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 5], stay: 0.4, deep: 0.4, target: [0.12, 0.35], slack: 0 },
 ].map((p, i) => ({ ...base, ...p, ...W1_HARD[i] }));
 
 // Welten 2–10: Parameter folgen einer Kurve, plus die Mechanik der Welt.
@@ -59,7 +60,9 @@ function worldLevel(w, j) {
   const p = {
     ...base,
     shape: SHAPE_CYCLE[(n * 5) % SHAPE_CYCLE.length],
-    angle: (n % 3 === 1) ? 0 : 45,
+    angle: 0,
+    // Kreuz und quer: Anteil schräg gestellter LKWs steigt Welt für Welt
+    chaos: intro ? Math.max(0, 0.1 * (w - 2)) : Math.min(0.85, Math.max(0, 0.1 * w + 0.02 * k - 0.1)),
     R: Math.min(6.4, 4.4 + lvl * 0.22 + (intro ? -0.4 : 0)),
     density: Math.min(0.82, 0.66 + lvl * 0.018),
     maxTrucks: 34,

@@ -9,6 +9,8 @@
 //   ramps                  Anzahl Rampen
 //   trucks: [{ x, y, d, s, c, c2, h, r, k, tt }]
 //       x,y Kopf-Feld (Fahrerhaus), d Richtung U/D/L/R, s Größe S/M/L/T,
+//       ODER frei gestellt: a Winkel in Grad (0 = nach rechts, 90 = nach unten),
+//       x,y Mitte des LKWs in Feld-Einheiten (Kommazahlen), kein d,
 //       c Farbe (c2 Farbe des Anhängers bei T), h=1 Plane (Farbe verdeckt),
 //       r Eilauftrag: muss spätestens mit Zug r aus dem Hof sein,
 //       k Kette: gesperrt, bis LKW Nr. k den Hof verlassen hat,
@@ -33,6 +35,10 @@ import {
   DIRS, SIZES, LOT, RAMP, GONE, WAIT, EMPTY, OBST, CLOCKWISE, colorOf, parseSupply,
 } from './constants.js';
 import { makeRng } from './rng.js';
+import {
+  gridPose, rectPoly, gatePoly, cellPoly, sweepDist, rasterCells, polyOverlap, truckPoly,
+  bodyLen, BODY_W, DIR_RAD,
+} from './geom.js';
 
 export const BLOCK = 4;   // Paletten pro Block (eine Reihe auf dem Band)
 export const WINDOW = 3;  // gleichzeitig verladbare Blöcke (Ausgabeplätze)
@@ -49,11 +55,17 @@ export class Game {
     this.h = level.h;
     this.sandbox = !!opts.sandbox;
     this.noEnd = !!opts.noEnd; // Generator: nie gewinnen/verlieren
-    this.trucks = level.trucks.map((t, i) => ({
-      id: i, x: t.x, y: t.y, dir: t.d, size: t.s, len: SIZES[t.s].len,
-      comps: makeComps(t), hidden: !!t.h, state: LOT, ramp: -1,
-      rush: t.r || 0, lock: t.k ?? -1, tt: !!t.tt, gate: -1,
-    }));
+    this.trucks = level.trucks.map((t, i) => {
+      const free = t.a !== undefined;
+      const o = {
+        id: i, x: t.x, y: t.y, dir: free ? null : t.d, size: t.s, len: SIZES[t.s].len,
+        comps: makeComps(t), hidden: !!t.h, state: LOT, ramp: -1,
+        rush: t.r || 0, lock: t.k ?? -1, tt: !!t.tt && !free, gate: -1,
+        free, fa: free ? (t.a * Math.PI) / 180 : 0,
+      };
+      if (free) o.rc = rasterCells(truckPoly(t), this.w, this.h);
+      return o;
+    });
     // Wartende LKWs in Toren bekommen fortlaufende Nummern hinter den Hof-LKWs.
     this.gates = (level.gates || []).map((g, gi) => {
       const queue = g.q.map((q) => {
@@ -82,12 +94,68 @@ export class Game {
     for (const t of this.trucks) {
       if (t.state === LOT) for (const [x, y] of this.cells(t)) this.grid[y * this.w + x] = t.id;
     }
-    for (const g of this.gates) this.grid[g.y * this.w + g.x] = OBST;
+    for (const g of this.gates) {
+      this.grid[g.y * this.w + g.x] = OBST;
+      const [dx, dy] = DIRS[g.d];
+      for (let k = 1; k <= 2; k++) {
+        const x = g.x - dx * k, y = g.y - dy * k;
+        if (this.inBounds(x, y) && this.grid[y * this.w + x] === EMPTY) this.grid[y * this.w + x] = OBST;
+      }
+    }
     for (const b of this.barriers) for (const [x, y] of b.cells) this.grid[y * this.w + x] = OBST;
+    this.blk = this._blockLists();
     const ev = [];
     this._spawn(ev);
     this._reveal(ev);
     this.startEvents = ev;
+  }
+
+  // Mitte und Winkel eines LKWs (Raster-LKWs optional mit anderer Richtung,
+  // für Drehscheiben: gedreht wird um das hintere Feld).
+  pose(t, dir = t.dir) {
+    if (t.free) return { cx: t.x, cy: t.y, a: t.fa };
+    if (dir === t.dir) return gridPose(t.x, t.y, dir, t.len);
+    const [dx, dy] = DIRS[t.dir];
+    const px = t.x - dx * (t.len - 1), py = t.y - dy * (t.len - 1);
+    const [ex, ey] = DIRS[dir];
+    return gridPose(px + ex * (t.len - 1), py + ey * (t.len - 1), dir, t.len);
+  }
+
+  // Für jeden LKW (und jede Drehscheiben-Richtung): alle Dinge, die ihm im Weg
+  // stehen können, nach Abstand sortiert. Das Hofbild ist fest, nur wer gerade
+  // da steht, ändert sich – blockerOf muss also nur die Liste ablaufen.
+  _blockLists() {
+    const obs = [];
+    for (const t of this.trucks) {
+      const dirs = t.tt ? CLOCKWISE : [t.dir];
+      for (const d of dirs) {
+        const p = this.pose(t, d);
+        obs.push({ j: t.id, jd: t.tt ? d : undefined, poly: rectPoly(p.cx, p.cy, p.a, bodyLen(t.len), BODY_W), cx: p.cx, cy: p.cy, r: bodyLen(t.len) / 2 + 0.5 });
+      }
+    }
+    this.gates.forEach((g) => obs.push({ j: -1, b: -1, poly: gatePoly(g), cx: g.x + 0.5, cy: g.y + 0.5, r: 2 }));
+    this.barriers.forEach((b, bi) => { for (const [x, y] of b.cells) obs.push({ j: -1, b: bi, poly: cellPoly(x, y), cx: x + 0.5, cy: y + 0.5, r: 1 }); });
+    const lists = [];
+    for (const t of this.trucks) {
+      const dirs = t.tt ? CLOCKWISE : [t.dir];
+      const per = {};
+      for (const d of dirs) {
+        const p = this.pose(t, d);
+        const c = Math.cos(p.a), s = Math.sin(p.a);
+        const out = [];
+        for (const o of obs) {
+          if (o.j === t.id) continue;
+          const ox = o.cx - p.cx, oy = o.cy - p.cy;
+          if (ox * c + oy * s < -o.r || Math.abs(-ox * s + oy * c) > BODY_W / 2 + o.r) continue;
+          const dist = sweepDist(p.cx, p.cy, p.a, BODY_W, o.poly);
+          if (dist !== null) out.push({ d: dist, j: o.j, jd: o.jd, b: o.b ?? -1 });
+        }
+        out.sort((a, b) => a.d - b.d);
+        per[d] = out;
+      }
+      lists.push(t.tt ? per : per[t.dir]);
+    }
+    return lists;
   }
 
   // Schnelle Kopie für den Solver.
@@ -110,11 +178,13 @@ export class Game {
     g.extraUsed = this.extraUsed;
     g.status = this.status;
     g.grid = this.grid.slice();
+    g.blk = this.blk;
     return g;
   }
 
   // Alle Felder, die ein LKW belegt (Kopf zuerst).
   cells(t) {
+    if (t.free) return t.rc;
     const [dx, dy] = DIRS[t.dir];
     const out = [];
     for (let i = 0; i < t.len; i++) out.push([t.x - dx * i, t.y - dy * i]);
@@ -132,14 +202,14 @@ export class Game {
 
   // Erstes Hindernis auf dem Weg nach vorne (LKW-Nummer oder OBST), sonst EMPTY.
   blockerOf(t) {
-    const [dx, dy] = DIRS[t.dir];
-    let x = t.x + dx;
-    let y = t.y + dy;
-    while (this.inBounds(x, y)) {
-      const o = this.grid[y * this.w + x];
-      if (o !== EMPTY) return o;
-      x += dx;
-      y += dy;
+    const list = t.tt ? this.blk[t.id][t.dir] : this.blk[t.id];
+    for (const e of list) {
+      if (e.j >= 0) {
+        const o = this.trucks[e.j];
+        if (o.state === LOT && (e.jd === undefined || o.dir === e.jd)) return e.j;
+      } else if (e.b >= 0) {
+        if (!this.barriers[e.b].open) return OBST;
+      } else return OBST;
     }
     return EMPTY;
   }
@@ -304,6 +374,11 @@ export class Game {
 
   _removeFromLot(t) {
     for (const [x, y] of this.cells(t)) this.grid[y * this.w + x] = EMPTY;
+    // Frei gestellte LKWs können sich ein Feld mit Nachbarn teilen: wieder eintragen
+    for (const o of this.trucks) {
+      if (!o.free || o === t || o.state !== LOT) continue;
+      for (const [x, y] of o.rc) if (this.grid[y * this.w + x] === EMPTY) this.grid[y * this.w + x] = o.id;
+    }
   }
 
   _sendToRamp(t, r, ev, crane) {
@@ -547,10 +622,19 @@ export function validateLevel(level) {
     if (grid[y * level.w + x] >= 0) errors.push(`${what} überlappt etwas`);
     grid[y * level.w + x] = 1;
   };
+  const polys = [];
   level.trucks.forEach((t, i) => {
     addNeed(t);
     const sz = SIZES[t.s];
     if (!sz) return;
+    if (t.a !== undefined) {
+      const P = truckPoly(t);
+      if (P.some(([x, y]) => x < 0 || y < 0 || x > level.w || y > level.h)) errors.push(`LKW ${i} ragt aus dem Hof`);
+      polys.push({ P, free: true, what: `LKW ${i}` });
+      if (t.tt) errors.push(`LKW ${i}: frei gestellt auf Drehscheibe`);
+      return;
+    }
+    polys.push({ P: truckPoly(t), what: `LKW ${i}` });
     const [dx, dy] = DIRS[t.d];
     for (let k = 0; k < sz.len; k++) occupy(t.x - dx * k, t.y - dy * k, `LKW ${i}`);
     if (t.k !== undefined && (t.k < 0 || t.k >= level.trucks.length || t.k === i)) errors.push(`LKW ${i}: ungültige Kette`);
@@ -560,6 +644,15 @@ export function validateLevel(level) {
     g.q.forEach(addNeed);
   });
   (level.barriers || []).forEach((b, bi) => b.cells.forEach(([x, y]) => occupy(x, y, `Schranke ${bi}`)));
+  (level.gates || []).forEach((g, gi) => polys.push({ P: gatePoly(g), what: `Tor ${gi}` }));
+  (level.barriers || []).forEach((b, bi) => b.cells.forEach(([x, y]) => polys.push({ P: cellPoly(x, y), what: `Schranke ${bi}` })));
+  for (let i = 0; i < polys.length; i++) {
+    for (let k = i + 1; k < polys.length; k++) {
+      const A = polys[i], B = polys[k];
+      if (!A.free && !B.free && !A.what.startsWith('Tor') && !B.what.startsWith('Tor')) continue;
+      if (polyOverlap(A.P, B.P)) errors.push(`${A.what} überlappt ${B.what}`);
+    }
+  }
   const have = {};
   for (const code of parseSupply(level.supply)) {
     const c = colorOf(code);

@@ -20,11 +20,13 @@
 //   slack                      Rampen, die die Referenz-Partie frei lässt (Fehler-Spielraum)
 //   target: [min, max]         Erfolgsquote simulierter Spieler (smart = wie umsichtig)
 //   hidden, gates, gateQ, barriers, barrierN, rush, chains, covered, turntables
+//   chaos                      Anteil frei (schräg, kreuz und quer) gestellter LKWs
 
 import { DIRS, SIZES, LOT, GONE, WAIT } from './constants.js';
 import { makeRng } from './rng.js';
 import { Game, validateLevel } from './model.js';
 import { playoutRate, trapStats } from './solver.js';
+import { truckPoly, rectPoly, gatePoly, rasterCells, polyOverlap, bodyLen, BODY_W } from './geom.js';
 
 const DIR_KEYS = ['U', 'D', 'L', 'R'];
 
@@ -70,12 +72,12 @@ export function makeMask(shape, R, angle) {
   const ca = Math.cos(a);
   const sa = Math.sin(a);
   const span = Math.abs(ca) + Math.abs(sa); // Ausdehnung des gedrehten Rasters
-  const N = Math.ceil(2 * R * span) + 3;
-  const W = N;
-  const H = N;
+  // Breiter als hoch: der Hof im Hochformat ist etwa 3:2, so werden die LKWs größer
+  const Rx = R * 1.2;
+  const Ry = R * 0.85;
+  const W = angle ? Math.ceil(2 * R * 1.2 * span) + 3 : Math.ceil(2 * Rx) + 3;
+  const H = angle ? W : Math.ceil(2 * Ry) + 3;
   const f = SHAPES[shape] || SHAPES.rect;
-  const Rx = R * 1.08;
-  const Ry = R * 0.94;
   const mask = new Uint8Array(W * H);
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
@@ -89,37 +91,15 @@ export function makeMask(shape, R, angle) {
   return { W, H, mask };
 }
 
-// Statischer Test: Lässt sich der Hof ohne Rampenlimit räumen? (Tore/Schranken = feste Hindernisse)
-function staticClearable(w, h, trucks, blocked) {
-  const grid = new Int16Array(w * h).fill(-1);
-  for (const i of blocked) grid[i] = -2;
-  trucks.forEach((t, i) => {
-    for (const [x, y] of cellsOf(t.x, t.y, t.d, SIZES[t.s].len)) grid[y * w + x] = i;
-  });
-  const alive = new Set(trucks.map((_, i) => i));
-  let changed = true;
-  while (alive.size && changed) {
+// Statischer Test: Lässt sich der Hof ohne Rampenlimit räumen? (Tore = feste Hindernisse)
+// Benutzt die echte Spiellogik (auch für schräg stehende LKWs).
+function staticClearable(w, h, trucks, gates) {
+  const g = new Game({ w, h, ramps: 1, trucks, gates: gates.map((x) => ({ x: x.x, y: x.y, d: x.d, q: [] })), supply: '' }, { sandbox: true, noEnd: true });
+  for (let changed = true; changed;) {
     changed = false;
-    for (const i of [...alive]) {
-      const t = trucks[i];
-      const [dx, dy] = DIRS[t.d];
-      let x = t.x + dx;
-      let y = t.y + dy;
-      let free = true;
-      while (x >= 0 && y >= 0 && x < w && y < h) {
-        const o = grid[y * w + x];
-        if (o !== -1 && o !== i) { free = false; break; }
-        x += dx;
-        y += dy;
-      }
-      if (free) {
-        alive.delete(i);
-        for (const [cx, cy] of cellsOf(t.x, t.y, t.d, SIZES[t.s].len)) grid[cy * w + cx] = -1;
-        changed = true;
-      }
-    }
+    for (const t of g.trucks) if (t.state === LOT && g.canExit(t)) { g.tap(t.id); changed = true; }
   }
-  return alive.size === 0;
+  return g.trucks.every((t) => t.state === GONE);
 }
 
 function pickWeighted(rng, weights) {
@@ -137,6 +117,7 @@ function pickWeighted(rng, weights) {
 function buildLot(p, rng) {
   const { W, H, mask } = makeMask(p.shape, p.R, p.angle || 0);
   const used = new Int8Array(W * H);
+  const owner = new Int16Array(W * H).fill(-1);
   const obst = [];
   const trucks = [];
   const gates = [];
@@ -159,14 +140,25 @@ function buildLot(p, rng) {
     }
   }
 
-  // Tore (Garagen) im Stau, Ausfahrt mit mindestens 3 freien Feldern davor
+  // Tore (Hallen) am Rand des Staus: Halle steht außen, Ausfahrt mit
+  // mindestens 3 freien Feldern davor
   for (let n = 0; n < (p.gates || 0); n++) {
-    for (let a = 0; a < 400; a++) {
+    for (let a = 0; a < 600; a++) {
       const x = rng.int(W);
       const y = rng.int(H);
-      const d = rng.pick(DIR_KEYS);
+      // Hallen lieber links/rechts: oben/unten kostet im Hochformat Platz
+      const d = rng.next() < 0.75 ? rng.pick(['L', 'R']) : rng.pick(['U', 'D']);
       const [dx, dy] = DIRS[d];
-      if (!free(x, y) || !free(x + dx, y + dy) || !free(x + dx * 2, y + dy * 2) || !free(x + dx * 3, y + dy * 3)) continue;
+      // Halle ganz außen: in Richtung der Halle liegt kein Feld des Staus mehr
+      let edge = true;
+      for (let i = 0; i < W * H && edge; i++) {
+        if (!mask[i]) continue;
+        const mx = i % W, my = (i / W) | 0;
+        if ((dx === 1 && mx < x) || (dx === -1 && mx > x) || (dy === 1 && my < y) || (dy === -1 && my > y)) edge = false;
+      }
+      if (!edge) continue;
+      if (inMask(x - dx, y - dy) || !free(x, y) || !free(x + dx, y + dy) || !free(x + dx * 2, y + dy * 2) || !free(x + dx * 3, y + dy * 3)) continue;
+      if (gates.some((g) => Math.abs(g.x - x) + Math.abs(g.y - y) < 3)) continue;
       used[y * W + x] = 1;
       obst.push(y * W + x);
       const [qmin, qmax] = p.gateQ || [2, 3];
@@ -187,11 +179,13 @@ function buildLot(p, rng) {
   const sumW = mixW.reduce((a, [, w]) => a + w, 0);
   const avgLen = mixW.reduce((a, [s, w]) => a + SIZES[s].len * w, 0) / sumW;
   const want = p.density ? Math.min(p.maxTrucks || 40, Math.round((area * p.density) / avgLen)) : p.trucks;
+  const chaos = p.chaos || 0;
+  const wantGrid = Math.round(want * (1 - chaos));
   // Normale LKWs: viele Versuche, damit der Stau dicht wird
   const mix = { ...p.mix };
   let attempts = 0;
   const maxAttempts = 9000;
-  while (trucks.length < want && attempts < maxAttempts) {
+  while (trucks.length < wantGrid && attempts < maxAttempts) {
     attempts++;
     const s = pickWeighted(rng, mix);
     const len = SIZES[s].len;
@@ -202,19 +196,50 @@ function buildLot(p, rng) {
     if (!cells.every(([cx, cy]) => free(cx, cy))) continue;
     const t = { x, y, d, s, c: 0 };
     trucks.push(t);
-    if (!staticClearable(W, H, trucks, obst)) {
+    if (!staticClearable(W, H, trucks, gates)) {
       trucks.pop();
       continue;
     }
-    for (const [cx, cy] of cells) used[cy * W + cx] = 1;
+    for (const [cx, cy] of cells) { used[cy * W + cx] = 1; owner[cy * W + cx] = trucks.length - 1; }
   }
-  if (trucks.length < Math.max(3, Math.floor(want * 0.85))) return null;
+  // Frei gestellte LKWs: beliebiger Winkel, irgendwo dazwischen
+  const mixFree = { ...p.mix, T: 0 };
+  for (let a = 0; a < 7000 && trucks.length < want; a++) {
+    const s = pickWeighted(rng, mixFree);
+    const len = SIZES[s].len;
+    let deg = rng.int(360);
+    const off = deg % 90;
+    if (off < 14 || off > 76) continue; // sichtbar schräg
+    const t = { x: Math.round((0.5 + rng.next() * (W - 1)) * 100) / 100, y: Math.round((0.5 + rng.next() * (H - 1)) * 100) / 100, a: deg, s, c: 0 };
+    const P = truckPoly(t);
+    if (P.some(([x, y]) => x < 0.05 || y < 0.05 || x > W - 0.05 || y > H - 0.05)) continue;
+    const core = rasterCells(P, W, H);
+    if (!core.every(([x, y]) => inMask(x, y))) continue;
+    const Pm = rectPoly(t.x, t.y, (deg * Math.PI) / 180, bodyLen(len) + 0.14, BODY_W + 0.14);
+    let bad = false;
+    const near = new Set();
+    trucks.forEach((o, i) => { if (o.a !== undefined) near.add(i); });
+    for (const [x, y] of rasterCells(Pm, W, H)) {
+      const i = y * W + x;
+      if (used[i] && owner[i] < 0) { bad = true; break; }
+      if (owner[i] >= 0) near.add(owner[i]);
+    }
+    if (bad) continue;
+    for (const o of near) if (polyOverlap(Pm, truckPoly(trucks[o]))) { bad = true; break; }
+    if (!bad) for (const g of gates) if (polyOverlap(Pm, gatePoly(g))) { bad = true; break; }
+    if (bad) continue;
+    trucks.push(t);
+    if (!staticClearable(W, H, trucks, gates)) { trucks.pop(); continue; }
+    for (const [x, y] of core) { used[y * W + x] = 1; if (owner[y * W + x] < 0) owner[y * W + x] = trucks.length - 1; }
+  }
+  if (trucks.length < Math.max(3, Math.floor(want * (0.85 - 0.2 * chaos)))) return null;
   for (let i = 0; i < used.length; i++) if (used[i] === 2) used[i] = 0;
 
   // Schranken auf freien Feldern im Weg von LKWs
   for (let n = 0; n < (p.barriers || 0); n++) {
     const cand = [];
     for (const t of trucks) {
+      if (t.a !== undefined) continue;
       const [dx, dy] = DIRS[t.d];
       let x = t.x + dx;
       let y = t.y + dy;

@@ -17,6 +17,7 @@
 // wenn sie wirklich frei ist.
 
 import { COLORS, DIRS, SIZES, COVER, LOT, WAIT, GONE } from '../core/constants.js';
+import { GATE_W, GATE_BACK, BODY_W, bodyLen } from '../core/geom.js';
 import { t as tr } from '../i18n.js';
 import { drawVehicle, drawPallet, vehicleSlot, vehicleLength, vehicleWidth } from './vehicles.js';
 import * as P from './props.js';
@@ -307,18 +308,25 @@ export class GameView {
       let my = 0.5;
       const cells = [];
       for (const t of g.trucks) if (t.state === LOT || t.state === WAIT) for (const c of g.cells(t)) cells.push(c);
-      for (const gt of g.gates) cells.push([gt.x, gt.y]);
+      for (const gt of g.gates) { const [dx, dy] = DIRS[gt.d]; cells.push([gt.x, gt.y], [gt.x - dx, gt.y - dy], [gt.x - dx * 1.6, gt.y - dy * 1.6]); }
       for (const b of g.barriers) for (const c of b.cells) cells.push(c);
       const ext = (Math.abs(ca) + Math.abs(sa)) / 2;
+      // Begrenzung aller Felder (gedreht), dann mittig in den Hof setzen
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
       for (const [x, y] of cells) {
         const gx = x + 0.5 - g.w / 2;
         const gy = y + 0.5 - g.h / 2;
-        mx = Math.max(mx, Math.abs(gx * ca - gy * sa) + ext);
-        my = Math.max(my, Math.abs(gx * sa + gy * ca) + ext);
+        const sx = gx * ca - gy * sa, sy = gx * sa + gy * ca;
+        x0 = Math.min(x0, sx - ext); x1 = Math.max(x1, sx + ext);
+        y0 = Math.min(y0, sy - ext); y1 = Math.max(y1, sy + ext);
       }
+      if (!cells.length) { x0 = y0 = -0.5; x1 = y1 = 0.5; }
+      mx = Math.max(mx, (x1 - x0) / 2);
+      my = Math.max(my, (y1 - y0) / 2);
       const iw = inner.x2 - inner.x;
       const ih = inner.y2 - inner.y;
       L.cl = Math.min(30, iw / (2 * mx), ih / (2 * my));
+      L.lotO = { x: L.lotC.x - L.cl * (x0 + x1) / 2, y: L.lotC.y - L.cl * (y0 + y1) / 2 };
       L.ca = ca;
       L.sa = sa;
     }
@@ -384,16 +392,20 @@ export class GameView {
     const g = this.game || this.demo;
     const x = (gx - g.w / 2) * L.cl;
     const y = (gy - g.h / 2) * L.cl;
-    return { x: L.lotC.x + x * L.ca - y * L.sa, y: L.lotC.y + x * L.sa + y * L.ca };
+    return { x: L.lotO.x + x * L.ca - y * L.sa, y: L.lotO.y + x * L.sa + y * L.ca };
   }
   screenToGrid(x, y) {
     const L = this.L;
     const g = this.game || this.demo;
-    const dx = x - L.lotC.x;
-    const dy = y - L.lotC.y;
+    const dx = x - L.lotO.x;
+    const dy = y - L.lotO.y;
     return { gx: (dx * L.ca + dy * L.sa) / L.cl + g.w / 2, gy: (-dx * L.sa + dy * L.ca) / L.cl + g.h / 2 };
   }
   truckPose(t) {
+    if (t.free) {
+      const p = this.gridToScreen(t.x, t.y);
+      return { x: p.x, y: p.y, a: t.fa + this.L.ang };
+    }
     // Mitte des LKWs: Kopf-Feld minus halbe Länge
     const [dx, dy] = DIRS[t.dir];
     const hx = t.x + 0.5 - dx * (t.len - 1) / 2;
@@ -669,7 +681,10 @@ export class GameView {
     const tv = this.tvs[ev.id];
     const g = this.game || this.demo;
     const gate = g.gates[ev.gate];
-    const from = this.gridToScreen(gate.x + 0.5, gate.y + 0.5);
+    // Start in der Halle: Front an der Tür, der Rest steckt noch unter dem Dach
+    const [gx, gy] = DIRS[gate.d];
+    const back = 0.46 - Math.min(bodyLen(tv.t.len) / 2, 1.2);
+    const from = this.gridToScreen(gate.x + 0.5 + gx * back, gate.y + 0.5 + gy * back);
     this.placeLot(tv);
     tv.spawn = { t0: now, from, to: { x: tv.x, y: tv.y } };
     tv.state = 'spawn';
@@ -1092,10 +1107,13 @@ export class GameView {
     if (!g) return;
     this.drawLotObjects(ctx, now);
     this.drawLotTrucks(ctx, now);
+    // Aus der Halle kommende LKWs liegen unter dem Hallendach
+    for (const tv of this.tvs) if (tv.state === 'spawn') this.drawTv(ctx, tv, now);
+    this.drawGates(ctx);
     this.drawQueue(ctx, now, g);
     this.drawBayOverlays(ctx, now);
     // Fahrende und geparkte LKWs
-    const vis = this.tvs.filter((v) => v.state === 'drive' || v.state === 'leave' || v.state === 'dock' || v.state === 'spawn' || v.state === 'rotate');
+    const vis = this.tvs.filter((v) => v.state === 'drive' || v.state === 'leave' || v.state === 'dock' || v.state === 'rotate');
     vis.sort((a, b) => a.y - b.y);
     for (const tv of vis) this.drawTv(ctx, tv, now);
     this.drawFlights(ctx, now);
@@ -1352,7 +1370,7 @@ export class GameView {
     const c = L.cl, px = 1 / c; // px = ein virtueller Pixel in Feld-Einheiten
     const m = 0.32;
     ctx.save();
-    ctx.translate(L.lotC.x, L.lotC.y);
+    ctx.translate(L.lotO.x, L.lotO.y);
     ctx.rotate(L.ang || 0);
     ctx.scale(c, c);
     ctx.translate(-g.w / 2, -g.h / 2);
@@ -1732,11 +1750,6 @@ export class GameView {
     const g = this.game || this.demo;
     const L = this.L;
     const c = L.cl;
-    g.gates.forEach((gt, gi) => {
-      const p = this.gridToScreen(gt.x + 0.5, gt.y + 0.5);
-      const left = gt.queue.length - gt.next;
-      P.drawGarage(ctx, p.x, p.y, DIR_ANGLE[gt.d] + L.ang, c, { count: left });
-    });
     g.barriers.forEach((b, bi) => {
       for (const [x, y] of b.cells) {
         const p = this.gridToScreen(x + 0.5, y + 0.5);
@@ -1754,6 +1767,24 @@ export class GameView {
       const [dx, dy] = DIRS[t.dir];
       const p = this.gridToScreen(t.x - dx * (t.len - 1) + 0.5, t.y - dy * (t.len - 1) + 0.5);
       P.drawTurntable(ctx, p.x, p.y, c * 0.62, tv.a);
+    }
+  }
+
+  // Torhallen: stehen am Hofrand, Tür zum Hof, so breit wie eine Spur
+  drawGates(ctx) {
+    const g = this.game || this.demo;
+    const L = this.L;
+    const c = L.cl;
+    for (const gt of g.gates) {
+      const [dx, dy] = DIRS[gt.d];
+      const p = this.gridToScreen(gt.x + 0.5 - (dx * GATE_BACK) / 2, gt.y + 0.5 - (dy * GATE_BACK) / 2);
+      const len = (1 + GATE_BACK - 0.08) * c, wid = GATE_W * c;
+      const horiz = dx !== 0;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      if (L.ang) ctx.rotate(L.ang);
+      P.drawDepot(ctx, 0, 0, horiz ? len : wid, horiz ? wid : len, gt.d, c, { count: gt.queue.length - gt.next, truckW: BODY_W * c });
+      ctx.restore();
     }
   }
 
