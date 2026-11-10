@@ -22,7 +22,9 @@ import { drawVehicle, drawPallet, vehicleSlot, vehicleLength, vehicleWidth } fro
 import * as P from './props.js';
 import { sfx, vibrate } from '../audio.js';
 
-const VW = 390;
+const FW = 390; // Breite der Fabrik (Hochformat: ganze Szene)
+const LOT_W = 372; // Querformat: Breite des Hofs rechts neben der Fabrik
+const LAND_H = 392; // Querformat: Höhe der Szene (Halle bis Rampenstraße)
 const DIR_ANGLE = { R: 0, D: Math.PI / 2, L: Math.PI, U: -Math.PI / 2 };
 const LOT_K = 0.77;      // Maßstab der LKWs im Hof relativ zum Raster (Abstand zueinander)
 const ROAD_W = 30;
@@ -139,7 +141,9 @@ export class GameView {
     this.hooks = hooks;
     this.game = null;
     this.symbols = false;
-    this.insets = { top: 60, bottom: 90 };
+    this.insets = { top: 60, bottom: 90, left: 0, right: 0 };
+    this.VW = FW;
+    this.land = false;
     this.select = null; // 'truck' | 'dock' während ein Bonus ein Ziel braucht
     this.idleCbs = [];
     this.timers = [];
@@ -184,8 +188,8 @@ export class GameView {
     this.pulse = 0;
   }
 
-  setInsets(top, bottom) {
-    this.insets = { top, bottom };
+  setInsets(top, bottom, left = 0, right = 0) {
+    this.insets = { top, bottom, left, right };
     this.resize();
   }
 
@@ -198,13 +202,28 @@ export class GameView {
     this.dpr = dpr;
     this.cw = cw;
     this.ch = ch;
-    // Breite füllen; wird es zu niedrig, nach Höhe skalieren (Ränder mit Rasen)
-    let scale = cw / VW;
-    const need = 760; // Mindesthöhe der Szene in virtuellen Einheiten (ohne Leisten)
-    const avail = (ch - this.insets.top - this.insets.bottom) / scale;
-    if (avail < need - 120) scale = (ch - this.insets.top - this.insets.bottom) / (need - 120);
+    const ins = this.insets;
+    // Querformat: Fabrik links, Hof rechts daneben
+    this.land = cw > ch * 1.15;
+    let scale;
+    if (this.land) {
+      this.VW = FW + LOT_W;
+      const aw = Math.max(100, cw - (ins.left || 0) - (ins.right || 0));
+      const ah = Math.max(100, ch - ins.top - ins.bottom);
+      scale = Math.min(aw / this.VW, ah / LAND_H);
+      this.offX = (ins.left || 0) + (aw - this.VW * scale) / 2;
+      this.extraY = Math.max(0, ah / scale - LAND_H);
+    } else {
+      this.VW = FW;
+      // Breite füllen; wird es zu niedrig, nach Höhe skalieren (Ränder mit Rasen)
+      scale = cw / FW;
+      const need = 760; // Mindesthöhe der Szene in virtuellen Einheiten (ohne Leisten)
+      const avail = (ch - ins.top - ins.bottom) / scale;
+      if (avail < need - 120) scale = (ch - ins.top - ins.bottom) / (need - 120);
+      this.offX = (cw - FW * scale) / 2;
+      this.extraY = 0;
+    }
     this.scale = scale;
-    this.offX = (cw - VW * scale) / 2;
     this.VH = ch / scale;
     this.layout();
   }
@@ -212,13 +231,17 @@ export class GameView {
   // ---------- Layout ----------
   layout() {
     const s = this.scale;
-    const T = this.insets.top / s + 2;
+    const land = this.land;
+    const T = this.insets.top / s + 2 + (land ? this.extraY * 0.45 : 0);
     const B = this.VH - this.insets.bottom / s;
-    const L = { T, B };
+    const L = { T, B, land };
+    L.vx0 = -this.offX / s;
+    L.vx1 = (this.cw - this.offX) / s;
+    const changed = this.L && this.L.land !== land;
     L.hall = { y: T - 4, h: 50 };
     const gateY = T + 42;
     L.gateY = gateY;
-    L.ell = { cx: VW / 2, cy: T + 112, rx: 85, ry: 58 };
+    L.ell = { cx: FW / 2, cy: T + 112, rx: 85, ry: 58 };
     const { cx, cy, rx, ry } = L.ell;
     L.M = { x: cx, y: cy + ry };
     L.S = { x: cx, y: cy + ry + 20 };
@@ -227,10 +250,21 @@ export class GameView {
     L.bayTop = L.D + 18;
     L.bayH = 116;
     L.RY = L.bayTop + L.bayH + 17; // Mittellinie obere Ringstraße
-    L.RB = Math.max(L.RY + 250, B - ROAD_W / 2 - 6);
-    L.ring = { x: 22, y: L.RY, w: VW - 44, h: L.RB - L.RY };
-    L.x1 = 22;
-    L.x2 = VW - 22;
+    if (land) {
+      // Ring rechts neben der Fabrik; seine Unterseite ist die Rampenstraße
+      L.x1 = FW + 10;
+      L.x2 = this.VW - 22;
+      L.rT = T + 14;
+      L.rB = L.RY;
+      L.RB = L.RY;
+    } else {
+      L.RB = Math.max(L.RY + 250, B - ROAD_W / 2 - 6);
+      L.x1 = 22;
+      L.x2 = FW - 22;
+      L.rT = L.RY;
+      L.rB = L.RB;
+    }
+    L.ring = { x: L.x1, y: L.rT, w: L.x2 - L.x1, h: L.rB - L.rT };
     // Zulieferspuren: Tor → gerade nach unten → unterer Ellipsenbogen → Weiche → Station
     L.lanes = [0, 1].map((side) => {
       const x = side === 0 ? cx - rx : cx + rx;
@@ -243,13 +277,13 @@ export class GameView {
     // Rampen / Buchten
     const n = this.game ? this.game.ramps.length : 4;
     L.nBays = n;
-    L.bayW = (VW - 60) / n;
+    L.bayW = (FW - 60) / n;
     L.bays = [];
     for (let i = 0; i < n; i++) L.bays.push(30 + (i + 0.5) * L.bayW);
     L.cd = Math.min(22, (L.bayH - 6) / 5.15); // Fahrzeug-Maßstab an den Rampen
     L.slotW = Math.min(L.bayW - 8, L.cd * 0.84 + 16); // sichtbare Buchtbreite: knapp LKW-Breite
     // Hof (Stau) im Inneren des Rings
-    const inner = { x: L.x1 + ROAD_W / 2 + 8, y: L.RY + ROAD_W / 2 + 8, x2: L.x2 - ROAD_W / 2 - 8, y2: L.RB - ROAD_W / 2 - 8 };
+    const inner = { x: L.x1 + ROAD_W / 2 + 8, y: L.rT + ROAD_W / 2 + 8, x2: L.x2 - ROAD_W / 2 - 8, y2: L.rB - ROAD_W / 2 - 8 };
     L.inner = inner;
     L.lotC = { x: (inner.x + inner.x2) / 2, y: (inner.y + inner.y2) / 2 };
     const g = this.game || this.demo;
@@ -282,6 +316,56 @@ export class GameView {
     this.sceneDirty = true;
     this.lotDirty = true;
     for (const tv of this.tvs) if (tv.state === 'lot') this.placeLot(tv);
+    if (changed && (this.game || this.demo)) this.relocateMovers();
+  }
+
+  // Ausrichtung gewechselt, während LKWs unterwegs sind: Wege passen nicht mehr.
+  // Abfahrende sind sofort weg, Ankommende stehen direkt an ihrer Rampe
+  // (oder fahren neu los, wenn die Rampe noch belegt ist).
+  relocateMovers() {
+    const L = this.L;
+    const now = performance.now();
+    const dockY = (tv) => L.bayTop + vehicleLength(tv.size, L.cd) / 2 + 3;
+    for (const tv of this.tvs) {
+      if (tv.state === 'leave') {
+        tv.state = 'gone';
+        if (this.bayOcc[tv.bay] === tv) this.bayOcc[tv.bay] = null;
+      }
+    }
+    for (const tv of this.tvs) {
+      if (tv.state === 'dock') {
+        tv.dockX = L.bays[tv.bay];
+        tv.x = tv.dockX;
+        tv.y = dockY(tv);
+        tv.a = Math.PI / 2;
+        tv.cell = L.cd;
+      } else if (tv.state === 'crane') {
+        const c = tv.crane;
+        c.to.x = L.bays[c.r];
+        c.to.y = dockY(tv);
+        c.from = { x: c.to.x, y: c.to.y - 40, a: c.to.a, cell: L.cd };
+      }
+    }
+    for (const tv of this.tvs) {
+      if (tv.state !== 'drive') continue;
+      const occ = this.bayOcc[tv.bay];
+      if (!occ || occ === tv || occ.state === 'gone') {
+        this.bayOcc[tv.bay] = tv;
+        tv.x = L.bays[tv.bay];
+        tv.y = dockY(tv);
+        this.dock(tv, now);
+      } else {
+        tv.x = L.lotC.x;
+        tv.y = L.lotC.y;
+        tv.a = L.land ? Math.PI / 2 : -Math.PI / 2;
+        tv.cell = L.cl * LOT_K;
+        this.planApproach(tv, tv.bay);
+        tv.s = 0;
+        tv.v = 0;
+        tv.phase = 'approach';
+      }
+    }
+    this.lotDirty = true;
   }
 
   // Feld (Raster) → Bildschirm (virtuell)
@@ -495,22 +579,27 @@ export class GameView {
     let best = Infinity;
     let edge = 0;
     const tryT = (t, e) => { if (t > 0 && t < best) { best = t; edge = e; } };
-    if (uy < -1e-6) tryT((L.RY - tv.y) / uy, 0); // oben
+    const top = L.rT, bot = L.rB;
+    if (uy < -1e-6) tryT((top - tv.y) / uy, 0); // oben
     if (ux > 1e-6) tryT((L.x2 - tv.x) / ux, 1); // rechts
-    if (uy > 1e-6) tryT((L.RB - tv.y) / uy, 2); // unten
+    if (uy > 1e-6) tryT((bot - tv.y) / uy, 2); // unten
     if (ux < -1e-6) tryT((L.x1 - tv.x) / ux, 3); // links
-    const E = { x: clamp(tv.x + ux * best, L.x1, L.x2), y: clamp(tv.y + uy * best, L.RY, L.RB) };
+    const E = { x: clamp(tv.x + ux * best, L.x1, L.x2), y: clamp(tv.y + uy * best, top, bot) };
     const bx = L.bays[r];
-    const A = { x: bx + REV_R + 6, y: L.RY };
+    // Hochformat: Rampenstraße = Oberseite des Rings, Fahrt nach rechts.
+    // Querformat: Rampenstraße = Unterseite des Rings, Fahrt nach links.
+    const A = L.land ? { x: bx - REV_R - 6, y: L.RY } : { x: bx + REV_R + 6, y: L.RY };
+    const goal = L.land ? 2 : 0;
+    const direct = L.land ? edge === 2 : edge === 0 && E.x < A.x - 24;
     const pts = [{ x: tv.x, y: tv.y }, E];
-    const corner = [{ x: L.x2, y: L.RY }, { x: L.x2, y: L.RB }, { x: L.x1, y: L.RB }, { x: L.x1, y: L.RY }];
-    // Eine Seite weiter im Uhrzeigersinn, bis wir oben links vor der Bucht sind
+    const corner = [{ x: L.x2, y: top }, { x: L.x2, y: bot }, { x: L.x1, y: bot }, { x: L.x1, y: top }];
+    // Im Uhrzeigersinn Seite um Seite weiter, bis wir auf der Rampenstraße sind
     let e = edge;
-    if (!(e === 0 && E.x < A.x - 24)) {
+    if (!direct) {
       for (let k = 0; k < 4; k++) {
         pts.push(corner[e]);
         e = (e + 1) % 4;
-        if (e === 0) break;
+        if (e === goal) break;
       }
     }
     pts.push(A);
@@ -526,10 +615,10 @@ export class GameView {
     // (dort fahren die abfahrenden LKWs), sondern vor der Kurve links unten
     // bzw. noch im Hof, bevor er auf die Straße fährt.
     const len = vehicleLength(tv.size, L.cd);
-    const direct = edge === 0 && E.x < A.x - 24;
     if (direct) tv.sHold = Math.max(0, tv.sJoin - ROAD_W / 2 - len / 2 - 8);
     else {
-      const sTop = tv.path.length - (A.x - L.x1); // ungefähr: Ecke oben links
+      // ungefähr die letzte Ecke vor der Rampenstraße (hoch: oben links, quer: unten rechts)
+      const sTop = tv.path.length - (L.land ? L.x2 - A.x : A.x - L.x1);
       tv.sHold = Math.max(Math.min(tv.sJoin, sTop), sTop - CORNER - len / 2 - 10);
     }
     tv.cell0 = tv.cell || L.cl;
@@ -539,7 +628,7 @@ export class GameView {
     const bx = L.bays[r];
     const len = vehicleLength(tv.size, L.cd);
     const F = { x: bx, y: L.bayTop + len / 2 + 3 };
-    tv.path = makePath([{ x: bx + REV_R + 6, y: L.RY }, { x: bx, y: L.RY }, F], REV_R);
+    tv.path = makePath([{ x: bx + (L.land ? -1 : 1) * (REV_R + 6), y: L.RY }, { x: bx, y: L.RY }, F], REV_R);
     tv.s = 0;
     tv.v = 0;
     tv.phase = 'reverse';
@@ -547,7 +636,8 @@ export class GameView {
   planLeave(tv) {
     const L = this.L;
     const bx = L.bays[tv.bay];
-    tv.path = makePath([{ x: tv.x, y: tv.y }, { x: bx, y: L.RY }, { x: L.x2, y: L.RY }, { x: VW + 120, y: L.RY }], REV_R);
+    const end = L.land ? [{ x: L.vx0 - 120, y: L.RY }] : [{ x: L.x2, y: L.RY }, { x: Math.max(FW, L.vx1) + 120, y: L.RY }];
+    tv.path = makePath([{ x: tv.x, y: tv.y }, { x: bx, y: L.RY }, ...end], REV_R);
     tv.s = 0;
     tv.v = 0;
     tv.phase = 'leave';
@@ -661,7 +751,7 @@ export class GameView {
 
   warnAnchor() {
     const L = this.L;
-    return [this.offX + (VW / 2) * this.scale, (L.bayTop + L.bayH * 0.5) * this.scale];
+    return [this.offX + (FW / 2) * this.scale, (L.bayTop + L.bayH * 0.5) * this.scale];
   }
 
   // ---------- Bewegung ----------
@@ -1046,7 +1136,7 @@ export class GameView {
       this._cloud = cv;
     }
     const ex = this.offX / this.scale;
-    const x0 = -ex - 260, span = VW + 2 * ex + 260;
+    const x0 = -ex - 260, span = this.VW + 2 * ex + 260;
     const ga = ctx.globalAlpha;
     ctx.globalAlpha = 0.19;
     const t = now * 0.0075; // ~7 px/s
@@ -1128,21 +1218,34 @@ export class GameView {
     const vx0 = -this.offX / this.scale;
     const vw = this.cw / this.scale;
     // Platz vor den Rampen: Beton
-    P.drawConcrete(ctx, vx0, L.hall.y + L.hall.h - 4, vw, L.RY - (L.hall.y + L.hall.h) + 4, 3, { slab: 48 });
+    const fw = L.land ? L.x1 - vx0 : vw; // Breite des Fabrikbereichs
+    P.drawConcrete(ctx, vx0, L.hall.y + L.hall.h - 4, fw, L.RY - (L.hall.y + L.hall.h) + 4, 3, { slab: 48 });
     // Innenfläche des Rings: heller Beton, Stau-Fläche dezent markiert
     const r = L.ring;
     P.drawConcrete(ctx, r.x + ROAD_W / 2, r.y + ROAD_W / 2, r.w - ROAD_W, r.h - ROAD_W, 11, { slab: 60, joints: false });
     this.drawLotShape(ctx);
     // Ringstraße
-    P.drawRingRoad(ctx, L.ring, ROAD_W, CORNER, { exitRight: true, seed: 5 });
+    if (L.land) {
+      // Ring um 180° gedreht zeichnen: die Ausfahrt liegt dann unten links
+      // und führt als Rampenstraße unter den Buchten nach links hinaus.
+      const rcx = r.x + r.w / 2, rcy = r.y + r.h / 2;
+      ctx.save();
+      ctx.translate(rcx, rcy);
+      ctx.rotate(Math.PI);
+      ctx.translate(-rcx, -rcy);
+      P.drawRingRoad(ctx, L.ring, ROAD_W, CORNER, { exitRight: true, exitLen: L.x1 - vx0 + 30, seed: 5 });
+      ctx.restore();
+    } else {
+      P.drawRingRoad(ctx, L.ring, ROAD_W, CORNER, { exitRight: true, exitLen: Math.max(200, L.vx1 - FW + 40), seed: 5 });
+    }
     // Halle
     // Dach liegt unter der HUD-Leiste, die Wand mit den Toren beginnt genau an
     // der HUD-Unterkante und ist damit vollständig sichtbar.
     const hy = Math.min(L.hall.y, 0);
     const capH = 6;
     const wallTop = Math.max(hy + 20, L.T - 3);
-    P.drawHallFacade(ctx, vx0, hy, vw, L.hall.y + L.hall.h - hy, {
-      gates: [{ cx: L.ell.cx - L.ell.rx, w: BELT_W + 4 }, { cx: L.ell.cx + L.ell.rx, w: BELT_W + 4 }], sign: 'PALLET RUSH', signX: VW / 2,
+    P.drawHallFacade(ctx, vx0, hy, L.land ? L.x1 - ROAD_W / 2 - 8 - vx0 : vw, L.hall.y + L.hall.h - hy, {
+      gates: [{ cx: L.ell.cx - L.ell.rx, w: BELT_W + 4 }, { cx: L.ell.cx + L.ell.rx, w: BELT_W + 4 }], sign: 'PALLET RUSH', signX: FW / 2,
       roofH: wallTop - capH - hy, capH,
     });
     // Deko neben dem Förderband (nach der Halle: Baumkronen dürfen vor der Wand stehen)
@@ -1150,10 +1253,10 @@ export class GameView {
     // Förderband: statischer Teil
     for (const p of this.beltPaths()) P.drawConveyor(ctx, p, BELT_W, 0, { layer: 'base', color: '#ff8a00' });
     // Rampenwand und Buchten
-    P.drawDockWall(ctx, 14, L.wallY, VW - 28, 10, { bumpersAt: L.bays.flatMap((x) => [x - 16, x + 16]) });
+    P.drawDockWall(ctx, 14, L.wallY, FW - 28, 10, { bumpersAt: L.bays.flatMap((x) => [x - 16, x + 16]) });
     L.bays.forEach((x, i) => P.drawDockBay(ctx, x, L.bayTop, L.slotW, L.bayH, { index: i, extra: i >= 4, floor: true }));
     // Rollenbahn: statischer Rahmen (Rollen laufen pro Frame)
-    P.drawDockConveyor(ctx, 22, VW - 22, L.D, 14, 0, { layer: 'base' });
+    P.drawDockConveyor(ctx, 22, FW - 22, L.D, 14, 0, { layer: 'base' });
     // Einheitlich knallige Farben: Szene einmalig kräftiger und klarer machen
     if ('filter' in ctx) {
       const tmp = document.createElement('canvas');
@@ -1251,7 +1354,7 @@ export class GameView {
     const { cx, cy, rx, ry } = L.ell;
     const hb = L.hall.y + L.hall.h;
     const bottom = L.D - 12;
-    const ex = this.offX / this.scale; // sichtbarer Rand links/rechts außerhalb von 0..VW
+    const ex = this.offX / this.scale; // sichtbarer Rand links/rechts außerhalb von 0..FW
     // Seitenflächen links und rechts der Zulieferbänder: Rasen mit Bordstein,
     // großer Baum, Laterne; darunter Arbeitsbereich mit Paletten bzw. Kübeln.
     const side = (x0, x1, left) => {
@@ -1286,7 +1389,7 @@ export class GameView {
       }
     };
     side(-ex + 3, cx - rx - BELT_W / 2 - 4, true);
-    side(cx + rx + BELT_W / 2 + 4, VW + ex - 3, false);
+    side(cx + rx + BELT_W / 2 + 4, L.land ? L.x1 - ROAD_W / 2 - 8 : FW + ex - 3, false);
     // Inneres des Rundbands: Grüninsel mit Baum
     const ix0 = cx - rx + BELT_W / 2 + 5, ix1 = cx + rx - BELT_W / 2 - 5;
     const iy0 = hb + 7, iy1 = cy + ry - BELT_W / 2 - 8;
@@ -1305,7 +1408,7 @@ export class GameView {
     const L = this.L;
     // Rollenbahn läuft von der Station aus nach außen: links nach links, rechts nach rechts
     P.drawDockConveyor(ctx, 22, L.S.x, L.D, 14, -this.dockPhase, { layer: 'belt' });
-    P.drawDockConveyor(ctx, L.S.x, VW - 22, L.D, 14, this.dockPhase, { layer: 'belt' });
+    P.drawDockConveyor(ctx, L.S.x, FW - 22, L.D, 14, this.dockPhase, { layer: 'belt' });
     const g = this.game || this.demo;
     // Weiche zeigt auf die Spur des vordersten Blocks
     const want = this._frontLane === 1 ? 1 : -1;
@@ -1485,15 +1588,17 @@ export class GameView {
       const tv = f.tv;
       const k = now - f.t0;
       const bx = tv.x;
-      const from = VW + 30;
+      // Kommt von der Seite, auf der keine LKWs fahren (hoch: rechts, quer: links)
+      const sg = L.land ? -1 : 1;
+      const from = L.land ? L.vx0 - 30 : FW + 30;
       const y = L.D - 2;
       const per = Math.max(35, Math.min(120, 1400 / f.ev.count));
       const tEnd = 700 + per * f.ev.count;
       let x;
-      let ang = Math.PI;
-      if (k < 700) x = lerp(from, bx + 18, easeOut(k / 700));
-      else if (k < tEnd) x = bx + 18 + Math.sin(k / 60) * 2;
-      else { x = lerp(bx + 18, from, ease(clamp((k - tEnd) / 700, 0, 1))); ang = 0; }
+      let ang = L.land ? 0 : Math.PI;
+      if (k < 700) x = lerp(from, bx + 18 * sg, easeOut(k / 700));
+      else if (k < tEnd) x = bx + 18 * sg + Math.sin(k / 60) * 2;
+      else { x = lerp(bx + 18 * sg, from, ease(clamp((k - tEnd) / 700, 0, 1))); ang = L.land ? Math.PI : 0; }
       P.drawForklift(ctx, x, y, ang, 30, { carrying: k < tEnd, cargo: COLORS[f.ev.color].hex, forkLift: k < tEnd ? 0.6 : 0 });
     }
   }
@@ -1504,7 +1609,7 @@ export class GameView {
       const c = tv.crane;
       const k = c.k ?? 0;
       const hookY = tv.y - 6 - (tv.lift || 0) * 10;
-      P.drawCrane(ctx, { baseX: VW - 40, baseY: L.RY - 30, hookX: tv.x, hookY, s: 1, cable: 30 + (1 - (tv.lift || 0)) * 10 + k * 0 });
+      P.drawCrane(ctx, { baseX: FW - 40, baseY: L.RY - 30, hookX: tv.x, hookY, s: 1, cable: 30 + (1 - (tv.lift || 0)) * 10 + k * 0 });
     }
   }
 
@@ -1654,7 +1759,7 @@ export class GameView {
     const now = performance.now();
     const top = this.L ? this.L.T : 0;
     for (let i = 0; i < 90; i++) {
-      this.fx.push({ type: 'conf', x: Math.random() * VW, y: top - 20 - Math.random() * 120, vx: (Math.random() - 0.5) * 0.05, vy: 0.05 + Math.random() * 0.08,
+      this.fx.push({ type: 'conf', x: Math.random() * this.VW, y: top - 20 - Math.random() * 120, vx: (Math.random() - 0.5) * 0.05, vy: 0.05 + Math.random() * 0.08,
         t0: now + Math.random() * 400, dur: 2600, c: ['#ff0a1e', '#ffe000', '#14d200', '#0a5cff', '#ff0aa0', '#00c8ff', '#9410ff', '#ffffff'][i % 8], r: Math.random() * 6, s: 3 + Math.random() * 3 });
     }
     this.shake(now, 2.5);
@@ -1682,7 +1787,7 @@ export class GameView {
         const pop = k < 0.15 ? easeOut(k / 0.15) * 1.25 : k < 0.25 ? 1.25 - (k - 0.15) * 2.5 : 1;
         ctx.save();
         ctx.globalAlpha = k > 0.75 ? (1 - k) / 0.25 : 1;
-        ctx.translate(clamp(f.x, 60, VW - 60), f.y - easeOut(k) * 26);
+        ctx.translate(clamp(f.x, 60, this.VW - 60), f.y - easeOut(k) * 26);
         ctx.scale(pop, pop);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';

@@ -385,7 +385,7 @@ export function drawConcrete(ctx, x, y, w, h, seed = 1, o = {}) {
 function ringOuter(ctx, X, Y, W, H, R, d, exit) {
   const r = R + d;
   if (!exit) { rr(ctx, X - d, Y - d, W + 2 * d, H + 2 * d, r); return; }
-  const ex = X + W + 200;
+  const ex = X + W + exit;
   ctx.moveTo(X + R, Y - d);
   ctx.lineTo(ex, Y - d);
   ctx.lineTo(ex, Y + d);
@@ -417,7 +417,7 @@ export function ringPoints(rect, cornerR) {
 // rect = Mittellinien-Rechteck, o = { exitRight, arrowGap: 120, seed }
 export function drawRingRoad(ctx, rect, roadW, cornerR, o = {}) {
   const { x: X, y: Y, w: W, h: H } = rect;
-  const R = cornerR, ex = !!o.exitRight;
+  const R = cornerR, ex = o.exitRight ? (o.exitLen || 200) : 0;
   const d0 = roadW / 2, cw = Math.max(3, roadW * 0.13), d1 = d0 + cw;
   const band = (d) => { ctx.beginPath(); ringOuter(ctx, X, Y, W, H, R, d, ex); ringInner(ctx, X, Y, W, H, R, d); };
   ctx.save();
@@ -513,7 +513,7 @@ export function drawRingRoad(ctx, rect, roadW, cornerR, o = {}) {
   const Rn = rng((o.seed || 3) * 31 + 5);
   const pts = [];
   for (let s = 0; s < cp.length; s += 1.2) pts.push(cp.at(s));
-  if (ex) for (let xx = X + W - R; xx < X + W + 200; xx += 1.2) pts.push({ x: xx, y: Y, a: 0 });
+  if (ex) for (let xx = X + W - R; xx < X + W + ex; xx += 1.2) pts.push({ x: xx, y: Y, a: 0 });
   ctx.fillStyle = 'rgba(20,22,28,0.35)';
   ctx.beginPath();
   for (const p of pts) for (let k = 0; k < 3; k++) { const off = (Rn() - 0.5) * roadW; ctx.rect(p.x - Math.sin(p.a) * off + (Rn() - 0.5), p.y + Math.cos(p.a) * off, 1, 1); }

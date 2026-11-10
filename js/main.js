@@ -64,6 +64,23 @@ function fixViewportGap() {
 }
 fixViewportGap();
 window.addEventListener('resize', fixViewportGap);
+
+// Hoch- oder Querformat: der Spieler dreht einfach das Gerät.
+// Im Querformat liegt der Hof rechts neben der Fabrik, die Boni stehen am rechten Rand.
+const isLand = () => window.innerWidth > window.innerHeight * 1.15;
+function applyOrient() {
+  document.body.classList.toggle('land', isLand());
+}
+applyOrient();
+window.addEventListener('resize', applyOrient);
+const safeProbe = document.createElement('div');
+safeProbe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;'
+  + 'padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
+document.documentElement.appendChild(safeProbe);
+function safeArea() {
+  const cs = getComputedStyle(safeProbe);
+  return { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 };
+}
 const refit = () => { const old = vgap; fixViewportGap(); if (old !== vgap) { window.__prView?.resize(); if (typeof game !== 'undefined' && game) measureInsets(); } };
 window.addEventListener('orientationchange', () => setTimeout(refit, 300));
 window.addEventListener('pageshow', () => setTimeout(refit, 50));
@@ -238,9 +255,16 @@ function showIntros(n) {
 }
 
 function measureInsets() {
+  applyOrient();
   const hud = $('#hud').getBoundingClientRect();
   const b = $('#boosters').getBoundingClientRect();
-  view.setInsets(hud.bottom, appH - b.top);
+  if (isLand()) {
+    const sa = safeArea();
+    const right = duel ? sa.r + 6 : Math.max(0, window.innerWidth - b.left);
+    view.setInsets(hud.bottom, sa.b + 4, sa.l + 4, right);
+  } else {
+    view.setInsets(hud.bottom, appH - b.top);
+  }
 }
 
 function updateCoins() {
@@ -738,7 +762,7 @@ document.addEventListener('click', (e) => {
 $('#modal').addEventListener('pointerdown', (e) => e.stopPropagation());
 
 document.addEventListener('visibilitychange', () => suspendAudio(document.hidden));
-window.addEventListener('resize', () => { if (game) measureInsets(); });
+window.addEventListener('resize', () => { applyOrient(); if (game) measureInsets(); });
 
 unlockBoosters();
 writeSave(save);

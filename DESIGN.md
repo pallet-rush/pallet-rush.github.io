@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 10.11.2026 · Version 0.3.8
+Stand: 10.11.2026 · Version 0.3.9
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -126,6 +126,19 @@ mit Münzen kaufen.
   Namen aus Links werden bereinigt und HTML-escaped.
 - Sieg im Duell: +40 Münzen, pro Herausforderung nur einmal (`save.duels`, letzte 50).
   Duelle ändern keinen Level-Fortschritt, keine Sterne, keine Fehlversuche.
+
+## 7c. Querformat (ab v0.3.9)
+
+- Der Spieler dreht einfach das Gerät (Manifest `orientation: any`); umgeschaltet
+  wird, sobald Breite > 1,15 × Höhe (`body.land`, `view.land`).
+- Szene quer: Fabrik (390 breit) links, Hof mit Ringstraße (372 breit) rechts
+  daneben. Die Unterseite des Rings ist die Rampenstraße; Verkehr im
+  Uhrzeigersinn, LKWs fahren nach links an den Buchten vorbei, setzen nach rechts
+  zurück ein und verlassen das Bild links. Stapler kommt von links.
+- Boni als Spalte am rechten Rand, HUD oben flacher; Menü: Logo links, Buttons
+  rechts; Dialoge breiter und flacher, Buttons nebeneinander.
+- Drehen während eines Levels: Abfahrende sind sofort weg, Ankommende stehen
+  direkt an ihrer Rampe (oder fahren neu los, wenn sie noch belegt ist).
 
 ## 8. Fairness-Garantien (Level-Pipeline)
 
