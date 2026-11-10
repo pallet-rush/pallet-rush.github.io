@@ -7,6 +7,7 @@ import { GameView } from './render/view.js';
 import { loadSave, writeSave } from './save.js';
 import { t, setLang, detectLang, applyTexts, getLang } from './i18n.js';
 import { sfx, vibrate, unlockAudio, configureAudio, suspendAudio } from './audio.js';
+import { LiveLink, newCode, validCode } from './net/live.js';
 
 // Bonus-Items: Freischalt-Level und Münzpreis (siehe DESIGN.md).
 export const BOOSTERS = [
@@ -111,6 +112,8 @@ let attempt = 1;      // Versuch im aktuellen Level (für Sterne)
 let usedBoosters = 0; // eingesetzte Boni im aktuellen Versuch (für Sterne)
 // Duell: { level, opp: { n, t, m, code } | null, t0, time, timer }
 let duel = null;
+// Live-Duell: { link, code, host, opp: { n, max }, round, ready, myTime, oppTime, oppProg, over, countdown }
+let live = null;
 
 // ---------- Menü ----------
 function showMenu() {
@@ -156,7 +159,7 @@ function startLevel(n) {
   $('#boosters').classList.remove('hidden');
   document.body.classList.toggle('duel-mode', !!duel);
   $('#hud-duel').classList.toggle('hidden', !duel);
-  if (duel) resetDuelClock();
+  if (duel && !(duel.live && duel.t0)) resetDuelClock();
   setHudLevel();
   updateCoins();
   refreshBoosters();
@@ -169,6 +172,7 @@ function startLevel(n) {
   writeSave(save);
   hintShown = false;
   updateProgress();
+  if (duel?.live) return;
   showIntros(n);
 }
 
@@ -199,6 +203,7 @@ function updateProgress() {
     bar.classList.add('tick');
   }
   progShown = done;
+  if (duel?.live && live?.link) live.link.send({ type: 'prog', done, total, st: game.status });
 }
 
 // Animiertes „Level N“-Banner beim Start
@@ -273,6 +278,7 @@ function updateCoins() {
 }
 
 function canAct() {
+  if (duel?.live && (!live || live.countdown || live.over)) return false;
   return game && game.status === 'playing' && !modalOpen() && !pending;
 }
 
@@ -768,7 +774,8 @@ unlockBoosters();
 writeSave(save);
 showMenu();
 const incomingDuel = readDuelLink();
-bootSplash().then(() => setTimeout(() => (incomingDuel ? showChallenge(incomingDuel) : checkDaily()), incomingDuel ? 250 : 700));
+const incomingLive = readLiveLink();
+bootSplash().then(() => setTimeout(() => (incomingLive ? liveJoin(incomingLive) : incomingDuel ? showChallenge(incomingDuel) : checkDaily()), incomingDuel || incomingLive ? 250 : 700));
 registerSW();
 
 // ---------- Ladebildschirm ----------
@@ -865,7 +872,7 @@ function coinBurst(target) {
 }
 
 // Für Tests in der Konsole
-window.__pr = { get game() { return game; }, get duel() { return duel; }, startDuel, duelCode, view, startLevel, get save() { return save; }, onBooster: (k) => onBooster(BOOSTERS.find((b) => b.key === k)) };
+window.__pr = { get game() { return game; }, get duel() { return duel; }, get live() { return live; }, liveHost, liveJoin, startDuel, duelCode, view, startLevel, get save() { return save; }, onBooster: (k) => onBooster(BOOSTERS.find((b) => b.key === k)) };
 
 // ---------- Duell per Link ----------
 // Ein Spieler schafft ein Level auf Zeit und schickt einen Link mit Level, Zeit, Zügen
@@ -930,6 +937,7 @@ function startDuel(level, opp = null) {
 }
 
 function endDuel() {
+  endLive();
   if (duel) clearInterval(duel.timer);
   duel = null;
   document.body.classList.remove('duel-mode');
@@ -999,9 +1007,11 @@ function showDuelMenu() {
     showDialog({
       title: t('duelTitle'),
       cls: 'duel',
-      html: `<div class="duel-art"><svg viewBox="0 0 48 48"><use href="#i-duel"/></svg></div><p>${t('duelIntro')}</p><p class="duel-rules">${t('duelRules')}</p>`,
+      html: `<div class="duel-art"><svg viewBox="0 0 48 48"><use href="#i-duel"/></svg></div><p>${t('liveIntro')}</p>`,
       actions: [
-        { label: t('duelStart'), cls: 'primary pulse', fn: () => startDuel(pickDuelLevel()) },
+        { label: t('liveHost'), cls: 'primary pulse', fn: liveHost },
+        { label: t('liveJoin'), fn: () => askLiveCode() },
+        { label: t('timeDuel'), fn: showTimeDuel },
         { label: t('back'), cls: 'quiet', fn: hideModal },
       ],
     });
@@ -1022,6 +1032,7 @@ function showChallenge(c) {
 }
 
 function duelWon() {
+  if (duel.live) { liveWon(); return; }
   const time = stopDuelClock();
   const opp = duel.opp;
   const moves = game.moves;
@@ -1073,6 +1084,7 @@ function duelWon() {
 }
 
 function duelLost() {
+  if (duel.live) { liveLost(); return; }
   stopDuelClock();
   save.stats.lost++;
   writeSave(save);
@@ -1112,4 +1124,331 @@ async function shareDuel(l, time, moves) {
   keep.parentElement.insertBefore(box, keep);
   box.focus();
   box.select();
+}
+
+function showTimeDuel() {
+  showDialog({
+    title: t('duelTitle'),
+    cls: 'duel',
+    html: `<p>${t('duelIntro')}</p><p class="duel-rules">${t('duelRules')}</p>`,
+    actions: [
+      { label: t('duelStart'), cls: 'primary pulse', fn: () => startDuel(pickDuelLevel()) },
+      { label: t('back'), cls: 'quiet', fn: showDuelMenu },
+    ],
+  });
+}
+
+// ---------- Live-Duell (Echtzeit) ----------
+// Beide spielen gleichzeitig dasselbe Level; jeder sieht den Fortschritt des anderen.
+// Wer zuerst fertig ist, gewinnt. Verlieren (alle Rampen voll) kostet nur Zeit: neu starten.
+const LIVE_REWARD = 30;
+const oppName = () => esc(live?.opp?.n || '???');
+
+function readLiveLink() {
+  const p = new URLSearchParams(location.search);
+  const code = (p.get('live') || '').toUpperCase();
+  if (!p.has('live')) return null;
+  p.delete('live');
+  const q = p.toString();
+  try { history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash); } catch {}
+  return validCode(code) ? code : null;
+}
+
+function liveUrl(code) {
+  const base = location.protocol === 'https:' || location.hostname === 'localhost' ? location.origin + location.pathname : 'https://pallet-rush.github.io/';
+  return `${base}?live=${code}`;
+}
+
+function endLive() {
+  if (!live) return;
+  const l = live;
+  live = null;
+  clearTimeout(l.cdTimer);
+  $('#countdown').classList.add('hidden');
+  try { l.link?.send({ type: 'bye' }); } catch {}
+  l.link?.close();
+}
+
+function newLive(host, code) {
+  endLive();
+  live = { host, code, link: null, opp: null, round: 0, ready: {}, myTime: null, oppTime: null, oppProg: null, over: false, countdown: false };
+  const me = live;
+  me.link = new LiveLink({
+    onOpen: () => { if (live === me) me.link.send({ type: 'hello', n: save.nick, max: save.maxLevel, v: VERSION }); },
+    onMessage: (m) => { if (live === me) onLiveMsg(m); },
+    onClose: (reason) => { if (live === me) liveGone(reason); },
+  });
+  return me;
+}
+
+function liveHost() {
+  askNick(async () => {
+    let me = null;
+    for (let tries = 0; tries < 3; tries++) {
+      me = newLive(true, newCode());
+      showLiveRoom();
+      try { await me.link.host(me.code); break; }
+      catch (e) {
+        if (live !== me) return;
+        if (e.message === 'taken' && tries < 2) continue;
+        liveGone('net');
+        return;
+      }
+    }
+    if (live === me) { me.waiting = true; showLiveRoom(); }
+  });
+}
+
+function showLiveRoom() {
+  if (!live) return;
+  const code = live.code;
+  showDialog({
+    title: t('liveTitle'),
+    cls: 'duel live',
+    html: `<p>${t('liveCodeText')}</p><div class="live-code">${code.split('').map((c) => `<span>${c}</span>`).join('')}</div>`
+      + `<p class="live-status"><i class="live-dot"></i>${live.opp ? fill(t('liveConnected'), { n: oppName() }) : live.waiting ? t('liveWaiting') : t('liveConnecting')}</p>`,
+    actions: [
+      { label: t('liveShare'), cls: 'primary', fn: () => shareLive(code) },
+      { label: t('cancel'), cls: 'quiet', fn: () => { endLive(); hideModal(); } },
+    ],
+  });
+}
+
+async function shareLive(code) {
+  const url = liveUrl(code);
+  const text = fill(t('liveShareText'), { c: code });
+  if (navigator.share) {
+    try { await navigator.share({ title: 'Pallet Rush', text, url }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  try { await navigator.clipboard.writeText(`${text} ${url}`); toast(t('linkCopied'), 2500); } catch { toast(url, 4000); }
+}
+
+function askLiveCode(prefill = '') {
+  askNick(() => {
+    showDialog({
+      title: t('liveJoin'),
+      html: `<input id="live-input" class="nick-input live-input" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" placeholder="${t('liveEnterCode')}" value="${esc(prefill)}">`,
+      actions: [
+        { label: t('liveJoinBtn'), cls: 'primary', fn: () => {
+          const inp = $('#live-input');
+          const c = inp.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+          if (!validCode(c)) { inp.classList.remove('shake'); void inp.offsetWidth; inp.classList.add('shake'); inp.focus(); return; }
+          liveJoin(c);
+        } },
+        { label: t('back'), cls: 'quiet', fn: showDuelMenu },
+      ],
+    });
+    const inp = $('#live-input');
+    inp.addEventListener('input', () => { inp.value = inp.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4); });
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#modal-panel .btn.primary').click(); });
+    setTimeout(() => inp.focus(), 200);
+  });
+}
+
+function liveJoin(code) {
+  askNick(async () => {
+    const me = newLive(false, code);
+    showDialog({
+      title: t('liveTitle'),
+      cls: 'duel live',
+      html: `<div class="live-code small">${code.split('').map((c) => `<span>${c}</span>`).join('')}</div><p class="live-status"><i class="live-dot"></i>${t('liveConnecting')}</p>`,
+      actions: [{ label: t('cancel'), cls: 'quiet', fn: () => { endLive(); hideModal(); } }],
+    });
+    try { await me.link.join(code); }
+    catch { if (live === me) liveGone('net'); }
+  });
+}
+
+function onLiveMsg(m) {
+  switch (m.type) {
+    case 'hello': {
+      live.opp = { n: cleanNick(m.n) || '???', max: Math.max(1, Math.min(LEVELS.length, m.max | 0 || 1)) };
+      if (live.host) { showLiveRoom(); setTimeout(() => { if (live && live.host && !live.round) liveStartRound(); }, 900); }
+      else {
+        const st = $('#modal-panel .live-status');
+        if (st) st.innerHTML = `<i class="live-dot on"></i>${fill(t('liveConnected'), { n: oppName() })}`;
+      }
+      break;
+    }
+    case 'start':
+      if (!live.host && Number.isInteger(m.level) && m.level >= 1 && m.level <= LEVELS.length) beginLiveRound(m.level, m.round | 0);
+      break;
+    case 'prog': {
+      const was = live.oppProg;
+      live.oppProg = { done: m.done | 0, total: m.total | 0, st: String(m.st || '') };
+      if (was && m.done === 0 && was.done > 0 && duel?.live && !live.over) toast(fill(t('liveOppRestart'), { n: oppName() }), 1300);
+      updateLiveHud();
+      break;
+    }
+    case 'won':
+      if (typeof m.t === 'number' && m.round === live.round) { live.oppTime = m.t; resolveLive(); }
+      break;
+    case 'rematch':
+      live.ready.opp = true;
+      if (live.host && live.ready.me) liveStartRound();
+      else if (live.over) {
+        const st = $('#modal-panel .live-status');
+        if (st) st.innerHTML = `<i class="live-dot on"></i>${fill(t('liveRematchAsk'), { n: oppName() })}`;
+      }
+      break;
+    case 'bye':
+      liveGone('left');
+      break;
+    default: break;
+  }
+}
+
+// Gastgeber wählt ein Level, das beide schon kennen
+function liveStartRound() {
+  if (!live || !live.host) return;
+  const hi = Math.max(1, Math.min(save.maxLevel, live.opp?.max || 1, LEVELS.length));
+  const lo = Math.max(1, hi - 14);
+  const level = lo + Math.floor(Math.random() * (hi - lo + 1));
+  const round = live.round + 1;
+  live.link.send({ type: 'start', level, round });
+  beginLiveRound(level, round);
+}
+
+function beginLiveRound(level, round) {
+  if (duel) clearInterval(duel.timer);
+  Object.assign(live, { round, ready: {}, myTime: null, oppTime: null, oppProg: { done: 0, total: 0, st: 'playing' }, over: false, rewarded: false });
+  duel = { level, opp: null, live: true, t0: 0, time: 0, timer: 0 };
+  hideModal();
+  goFullscreen();
+  startLevel(level);
+  updateLiveHud();
+  runCountdown();
+}
+
+function runCountdown() {
+  const el = $('#countdown');
+  live.countdown = true;
+  const steps = ['3', '2', '1', t('liveGo')];
+  let i = 0;
+  const me = live;
+  const step = () => {
+    if (live !== me) return;
+    if (i >= steps.length) { el.classList.add('hidden'); return; }
+    el.textContent = steps[i];
+    el.classList.remove('hidden', 'pop');
+    void el.offsetWidth;
+    el.classList.add('pop');
+    if (i < 3) sfx.tap(); else { sfx.start?.(); live.countdown = false; startDuelClock(); }
+    i++;
+    me.cdTimer = setTimeout(step, i === steps.length ? 600 : 800);
+  };
+  step();
+}
+
+function updateLiveHud() {
+  if (!live || !duel?.live) return;
+  const p = live.oppProg || { done: 0, total: 0 };
+  const total = p.total || game?.trucks.length || 1;
+  const pct = Math.round((Math.min(p.done, total) / total) * 100);
+  const el = $('#hud-opp');
+  el.classList.remove('hidden');
+  el.innerHTML = `<b>${oppName()}</b><span class="opp-bar"><i style="width:${pct}%"></i></span><span class="opp-num">${Math.min(p.done, total)}/${total}</span>`;
+}
+
+function liveWon() {
+  const time = stopDuelClock();
+  live.myTime = time;
+  live.link.send({ type: 'won', t: time, round: live.round });
+  $('#warn').classList.add('hidden');
+  sfx.win();
+  view.celebrate?.();
+  updateProgress();
+  resolveLive();
+}
+
+function liveLost() {
+  // Uhr läuft weiter: schnell neu starten
+  $('#warn').classList.add('hidden');
+  sfx.lose();
+  vibrate(60);
+  showDialog({
+    title: t('lost'),
+    cls: 'lose',
+    html: `<p>${t('liveLostText')}</p>`,
+    actions: [
+      { label: t('liveRestart'), cls: 'primary pulse', fn: () => startLevel(levelNo) },
+      { label: t('menu'), cls: 'quiet', fn: showMenu },
+    ],
+  });
+}
+
+// Ergebnis: kleinere Zeit gewinnt (beide Seiten rechnen gleich)
+function resolveLive() {
+  if (!live) return;
+  const me = live.myTime, opp = live.oppTime;
+  let result = null;
+  if (me != null && (opp == null || me <= opp)) result = 'win';
+  else if (opp != null && (me == null || opp < me)) result = 'lose';
+  if (!result || live.shown === result + live.round) return;
+  live.shown = result + live.round;
+  live.over = true;
+  if (result === 'lose' && me == null) {
+    // Gegner ist schon im Ziel: eigenes Spiel anhalten
+    stopDuelClock();
+    setSelecting(null);
+    sfx.lose();
+  }
+  let reward = 0;
+  if (result === 'win' && !live.rewarded) {
+    live.rewarded = true;
+    reward = LIVE_REWARD;
+    save.coins += reward;
+    save.stats.won++;
+    writeSave(save);
+    updateCoins();
+  }
+  const row = (name, ms, isMe) => `<div class="dr ${isMe ? 'me' : ''}"><span>${name}</span><b>${ms != null ? fmtTime(ms) : `<small>${t('liveOppPlaying')}</small>`}</b></div>`;
+  const rows = result === 'win'
+    ? row(esc(save.nick), me, true) + row(oppName(), opp, false)
+    : row(oppName(), opp, false) + row(esc(save.nick), me, true);
+  showDialog({
+    title: result === 'win' ? t('liveWin') : fill(t('liveLose'), { n: oppName() }),
+    cls: result === 'win' ? 'win duel' : 'duel lose-duel',
+    html: `<div class="duel-board"><small>${t('level')} ${levelNo}</small>${rows}</div>`
+      + (reward ? `<div class="reward"><span class="coin"></span><span class="reward-num">+${reward}</span> <small>${t('duelReward')}</small></div>` : '')
+      + `<p class="live-status"><i class="live-dot on"></i>${live.ready.opp ? fill(t('liveRematchAsk'), { n: oppName() }) : '&nbsp;'}</p>`,
+    actions: [
+      { label: t('liveRematch'), cls: 'primary pulse', fn: liveRematch },
+      { label: t('menu'), cls: 'quiet', fn: showMenu },
+    ],
+  });
+}
+
+function liveRematch() {
+  if (!live) return;
+  live.ready.me = true;
+  live.link.send({ type: 'rematch' });
+  if (live.host && live.ready.opp) { liveStartRound(); return; }
+  const st = $('#modal-panel .live-status');
+  if (st) st.innerHTML = `<i class="live-dot"></i>${fill(t('liveRematchWait'), { n: oppName() })}`;
+  const b = $('#modal-panel .btn.primary');
+  if (b) { b.disabled = true; b.classList.remove('pulse'); }
+}
+
+function liveGone(reason) {
+  if (!live) return;
+  const name = oppName();
+  const code = live.code;
+  const inGame = !!(duel?.live && game);
+  const l = live;
+  live = null;
+  clearTimeout(l.cdTimer);
+  $('#countdown').classList.add('hidden');
+  l.link?.close();
+  if (duel?.live) { clearInterval(duel.timer); duel.live = false; duel.t0 = 0; }
+  const text = reason === 'notfound' ? fill(t('liveNotFound'), { c: code })
+    : reason === 'net' ? t('liveNet')
+    : reason === 'p2p' ? t('liveP2p')
+    : fill(t('liveLeft'), { n: name });
+  const actions = reason === 'notfound'
+    ? [{ label: t('liveJoin'), cls: 'primary', fn: () => askLiveCode() }, { label: t('menu'), cls: 'quiet', fn: showMenu }]
+    : [{ label: t('menu'), cls: 'primary', fn: showMenu }];
+  if (inGame || reason !== 'left' || modalOpen()) showDialog({ title: t('liveGone'), cls: 'lose', html: `<p>${text}</p>`, actions });
+  else toast(text, 2500);
 }

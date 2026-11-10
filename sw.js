@@ -22,6 +22,7 @@ const CORE = [
   'js/i18n.js',
   'js/save.js',
   'js/audio.js',
+  'js/net/live.js',
   'js/core/constants.js',
   'js/core/model.js',
   'js/core/rng.js',

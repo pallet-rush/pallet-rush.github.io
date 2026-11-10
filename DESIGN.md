@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 10.11.2026 · Version 0.3.9
+Stand: 10.11.2026 · Version 0.4.0
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -139,6 +139,22 @@ mit Münzen kaufen.
   rechts; Dialoge breiter und flacher, Buttons nebeneinander.
 - Drehen während eines Levels: Abfahrende sind sofort weg, Ankommende stehen
   direkt an ihrer Rampe (oder fahren neu los, wenn sie noch belegt ist).
+
+## 7d. Live-Duell in Echtzeit (ab v0.4.0)
+
+- Duell-Menü: „Raum erstellen“, „Mit Code beitreten“, „Zeit-Duell per Link“ (7b).
+- Raum-Code aus 4 Zeichen (ohne I/O/0/1); Link `?live=CODE` tritt direkt bei.
+- Verbindung: WebRTC-Datenkanal direkt von Gerät zu Gerät. Nur der Aufbau
+  (Angebot/Antwort/ICE) läuft über den öffentlichen PeerJS-Server
+  (`js/net/live.js`, exaktes PeerJS-Nachrichtenformat). Kein TURN-Server:
+  klappt keine direkte Verbindung in 15 s, Meldung „nicht direkt verbinden“.
+- Ablauf: beide verbunden → Host wählt Level (≤ kleinerer Fortschritt beider,
+  aus den letzten 15) → Countdown 3-2-1-Los, Uhr startet bei „Los“.
+- HUD zeigt Name und Fortschrittsbalken des Gegners live. Neustart nach
+  Verlust ist möglich, die Uhr läuft weiter. Wer zuerst fertig ist (kleinere
+  Zeit), gewinnt: +30 Münzen. Danach „Revanche“ (neues Level) oder Menü.
+- Verlässt der Gegner das Duell oder bricht die Verbindung ab, gibt es eine Meldung.
+  Keine Boni, kein Einfluss auf Level-Fortschritt oder Sterne.
 
 ## 8. Fairness-Garantien (Level-Pipeline)
 
