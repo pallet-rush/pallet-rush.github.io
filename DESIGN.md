@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 11.11.2026 · Version 0.6.5
+Stand: 11.11.2026 · Version 0.6.6
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -63,12 +63,37 @@ dieser Farbe.
 
 ## 5. Welten und Mechaniken (300 Level)
 
-Alle 10 Level beginnt eine neue Welt mit einer neuen Mechanik. Die erste
-Begegnung wird mit einem kurzen Hinweis-Fenster erklärt. Es gibt keine
+Eine Welt umfasst 20 Level (ab v0.6.6; vorher 10 Level je Welt und 30 Welten).
+Die Level sind in Abschnitte zu 10 Level gebaut: Bis Level 100 bringt jeder
+Abschnitt eine neue Mechanik, danach kombiniert jeder Abschnitt zwei bekannte.
+Level 10 und 20 jeder Welt sind Boss-Level. Die erste Begegnung mit einer
+Mechanik wird mit einem kurzen Hinweis-Fenster erklärt. Es gibt keine
 Echtzeit-Uhren, alles läuft zug- oder abfahrtsbasiert, damit der Solver
 jedes Level garantiert prüfen kann.
 
-| Level | Welt | Neue Mechanik |
+### Die 15 Welten
+
+| Welt | Level | Name | Optik |
+|---|---|---|---|
+| 1 | 1–20 | Stadtlager | Stadt, Tag |
+| 2 | 21–40 | Hafen | Wasser, Tag |
+| 3 | 41–60 | Wüstendepot | Sand, Kakteen, Tag |
+| 4 | 61–80 | Schneeberge | Schnee, Tannen, Tag |
+| 5 | 81–100 | Neonstadt | Neon, Tag |
+| 6 | 101–120 | Waldsägewerk | Wald, Tag |
+| 7 | 121–140 | Tropenhafen | Palmen, Tag |
+| 8 | 141–160 | Fabrikviertel | Kies, Tag |
+| 9 | 161–180 | Flughafen | Asphalt, Tag |
+| 10 | 181–200 | Goldlager | Gold, Tag |
+| 11 | 201–220 | Abendhafen | Wasser, Abend |
+| 12 | 221–240 | Herbstwald | Herbstlaub, Abend |
+| 13 | 241–260 | Sternenwüste | Sand, Nacht |
+| 14 | 261–280 | Neonnacht | Neon, Nacht |
+| 15 | 281–300 | Schatzkammer | Gold, Nacht |
+
+### Abschnitte 1–10 (Level 1–100)
+
+| Level | Abschnitt | Neue Mechanik |
 |---|---|---|
 | 1–10 | Grundkurs | Transporter, LKW, Sattelzug, 4 Rampen |
 | 11–20 | Plane | Die Farbe einiger LKWs ist unter einer grauen Plane verdeckt, bis ihr Weg frei ist. |
@@ -81,53 +106,53 @@ jedes Level garantiert prüfen kann.
 | 81–90 | Drehscheibe | Ein LKW auf einer Drehscheibe dreht sich bei jedem Zug um 90°. |
 | 91–100 | Meisterwelt | Alle Mechaniken gemischt. |
 
-### Welten 11–20 (ab v0.6.0, Level 101–200)
+### Abschnitte 11–20 (ab v0.6.0, Level 101–200)
 
-Keine neue Mechanik mehr. Jede Welt kombiniert zwei bekannte Mechaniken, die in
-jedem ihrer Level vorkommen (ab Level 6 der Welt verstärkt). Das Boss-Level
-nimmt eine Mechanik der nächsten Welt dazu. Die Schwierigkeit läuft als
-Sägezahn: Jede Welt beginnt etwas leichter, Level 5 ist eine Verschnaufpause,
+Keine neue Mechanik mehr. Jeder Abschnitt kombiniert zwei bekannte Mechaniken, die in
+jedem seiner Level vorkommen (ab Level 6 des Abschnitts verstärkt). Das Boss-Level
+nimmt eine Mechanik des nächsten Abschnitts dazu. Die Schwierigkeit läuft als
+Sägezahn: Jeder Abschnitt beginnt etwas leichter, Level 5 ist eine Verschnaufpause,
 dann steigt sie bis zum Boss-Level. Zwei Tore in einem Level gibt es hier nicht
 (zu wenig Platz), stattdessen warten mehr LKWs hinter dem Tor.
 
-| Welt | Level | Name | Mechaniken |
-|---|---|---|---|
-| 11 | 101–110 | Abendlager | Plane + Tor |
-| 12 | 111–120 | Abendhafen | Schranke + Eilauftrag |
-| 13 | 121–130 | Canyon-Depot | Anhängerzug + Kette |
-| 14 | 131–140 | Gletscherpass | Kartonpaletten + Drehscheibe |
-| 15 | 141–150 | Neonufer | Tor + Schranke |
-| 16 | 151–160 | Herbstwald | Kette + Drehscheibe |
-| 17 | 161–170 | Palmenbucht | Plane + Anhängerzug |
-| 18 | 171–180 | Hüttenwerk | Eilauftrag + Kartonpaletten |
-| 19 | 181–190 | Frachtflughafen | Tor + Kette |
-| 20 | 191–200 | Kronlager | Schranke + Drehscheibe |
+| Abschnitt | Level | Mechaniken |
+|---|---|---|
+| 11 | 101–110 | Plane + Tor |
+| 12 | 111–120 | Schranke + Eilauftrag |
+| 13 | 121–130 | Anhängerzug + Kette |
+| 14 | 131–140 | Kartonpaletten + Drehscheibe |
+| 15 | 141–150 | Tor + Schranke |
+| 16 | 151–160 | Kette + Drehscheibe |
+| 17 | 161–170 | Plane + Anhängerzug |
+| 18 | 171–180 | Eilauftrag + Kartonpaletten |
+| 19 | 181–190 | Tor + Kette |
+| 20 | 191–200 | Schranke + Drehscheibe |
 
-### Welten 21–30 (ab v0.6.1, Level 201–300)
+### Abschnitte 21–30 (ab v0.6.1, Level 201–300)
 
 Gleiches Prinzip, eine Stufe schwerer (dichter, mehr Fallen, der simulierte
 Spieler gewinnt im Schnitt nur noch rund 10 %). Boss-Level hier mit 6 Fallen
 (drei Mechaniken und viele LKWs, 7 ließen sich nicht erzeugen).
 
-| Welt | Level | Name | Mechaniken |
-|---|---|---|---|
-| 21 | 201–210 | Nachtlager | Plane + Schranke |
-| 22 | 211–220 | Mondhafen | Tor + Eilauftrag |
-| 23 | 221–230 | Sternenwüste | Anhängerzug + Kartonpaletten |
-| 24 | 231–240 | Polarnacht | Kette + Plane |
-| 25 | 241–250 | Neonnacht | Drehscheibe + Tor |
-| 26 | 251–260 | Mitternachtswald | Eilauftrag + Anhängerzug |
-| 27 | 261–270 | Lagunenhafen | Kartonpaletten + Schranke |
-| 28 | 271–280 | Nachtschicht | Kette + Eilauftrag |
-| 29 | 281–290 | Nachtflug | Drehscheibe + Plane |
-| 30 | 291–300 | Schatzkammer | Tor + Kartonpaletten |
+| Abschnitt | Level | Mechaniken |
+|---|---|---|
+| 21 | 201–210 | Plane + Schranke |
+| 22 | 211–220 | Tor + Eilauftrag |
+| 23 | 221–230 | Anhängerzug + Kartonpaletten |
+| 24 | 231–240 | Kette + Plane |
+| 25 | 241–250 | Drehscheibe + Tor |
+| 26 | 251–260 | Eilauftrag + Anhängerzug |
+| 27 | 261–270 | Kartonpaletten + Schranke |
+| 28 | 271–280 | Kette + Eilauftrag |
+| 29 | 281–290 | Drehscheibe + Plane |
+| 30 | 291–300 | Tor + Kartonpaletten |
 
-Simulierter Spieler (Gewinnquote Ø): Welten 11–20 zwischen 9 und 17 %,
-Welten 21–30 zwischen 7 und 14 %. Erzeugt parallel in Web Workern
+Simulierter Spieler (Gewinnquote Ø): Abschnitte 11–20 zwischen 9 und 17 %,
+Abschnitte 21–30 zwischen 7 und 14 %. Erzeugt parallel in Web Workern
 (`tools/levelgen-worker.js`, `lg.generateParallel(von, bis, worker, versuche)`).
 
-Weltbanner 11–30 sind Farbvarianten der Banner 1–10: Welten 11–20 in
-Abendstimmung, Welten 21–30 bei Nacht (warme Lichter bleiben hell). Erzeugt mit
+Weltbanner 11–15 sind Farbvarianten der Banner 2, 6, 3, 5 und 10 (11–12 in
+Abendstimmung, 13–15 bei Nacht, warme Lichter bleiben hell). Erzeugt mit
 Pillow, ohne neue Grafiken.
 
 ## 6. Bonus-Items
@@ -151,7 +176,7 @@ mit Münzen kaufen.
 - Ein Bonus kostet also etwa 4–8 Level Spielzeit.
 - **Sterne** pro Level: 3 Sterne ohne Bonus beim ersten Versuch, je −1 für
   Bonus-Einsatz bzw. weiteren Versuch (mindestens 1). Der beste Wert zählt;
-  Sterne pro Welt stehen auf dem Welt-Banner der Levelauswahl (max. 30).
+  Sterne pro Welt stehen auf dem Welt-Banner der Levelauswahl (max. 60).
 - **Tagesbonus**: 7-Tage-Serie 30 / 40 / 50 / 60 / 80 / 100 / 150 Münzen.
   Ein ausgelassener Tag setzt die Serie zurück.
 - **Schwere Level**: Level 10 und jedes x6-Level ab 16 sind „Schwer“ (Münzen ×1,5),
@@ -294,9 +319,9 @@ mit Münzen kaufen.
   2 Hafen (Wasser mit Wellen), 3 Wüste (Sand, Kakteen), 4 Schnee (verschneite
   Tannen), 5 Neon (dunkles Leuchtgitter, Neonbäume), 6 Wald (Moos, Tannen),
   7 Tropen (Sand, Palmen), 8 Fabrik (Kies, olivgrün), 9 Flughafen (Asphalt mit
-  Markierungen), 10 Gold (glitzernd, goldene Bäume). Welten 11–20 nutzen dieselben
-  Themen in warmer Abendstimmung (16 Herbstwald mit Herbstlaub), Welten 21–30 bei
-  Nacht (dunkelblau, leuchtende Laternen). Eingefärbt wird nur die feste Szene;
+  Markierungen), 10 Gold (glitzernd, goldene Bäume). Welten 11–12 in warmer
+  Abendstimmung (11 Hafen, 12 Herbstwald mit Herbstlaub), 13–15 bei Nacht
+  (dunkelblau, leuchtende Laternen: Wüste, Neon, Gold). Eingefärbt wird nur die feste Szene;
   LKWs, Paletten und Bänder behalten ihre Farben, damit das Spiel lesbar bleibt.
 - Paletten sehen aus wie echte Holzpaletten mit farbiger Ladung. Beim Laden
   rutschen sie von ihrem eigenen Auslauf über die Rutsche auf die Rollenbahn,

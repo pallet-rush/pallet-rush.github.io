@@ -4,6 +4,7 @@ import { VERSION } from './version.js';
 import { LEVELS } from './data/levels.js';
 import { Game } from './core/model.js';
 import { GameView } from './render/view.js';
+import { WORLD_SIZE } from './render/themes.js';
 import { loadSave, writeSave } from './save.js';
 import { t, setLang, detectLang, applyTexts, getLang } from './i18n.js';
 import { sfx, vibrate, unlockAudio, configureAudio, suspendAudio } from './audio.js';
@@ -715,10 +716,10 @@ function showSettings(back) {
 
 function showLevels() {
   let html = '';
-  for (let w = 0; w * 10 < LEVELS.length; w++) {
-    const got = Array.from({ length: 10 }, (_, k) => save.levels[w * 10 + k + 1]?.stars || 0).reduce((a, b) => a + b, 0);
-    html += `<div class="world-banner" style="--wb:url('../assets/worlds/w${w + 1}.webp')"><div class="wb-text"><small>${t('world')} ${w + 1}</small><b>${t('wname' + (w + 1))}</b></div><div class="wb-stars"><span class="star on"></span>${got}/30</div></div><div class="level-grid">`;
-    for (let i = w * 10 + 1; i <= Math.min(LEVELS.length, w * 10 + 10); i++) {
+  for (let w = 0; w * WORLD_SIZE < LEVELS.length; w++) {
+    const got = Array.from({ length: WORLD_SIZE }, (_, k) => save.levels[w * WORLD_SIZE + k + 1]?.stars || 0).reduce((a, b) => a + b, 0);
+    html += `<div class="world-banner" style="--wb:url('../assets/worlds/w${w + 1}.webp')"><div class="wb-text"><small>${t('world')} ${w + 1}</small><b>${t('wname' + (w + 1))}</b></div><div class="wb-stars"><span class="star on"></span>${got}/${WORLD_SIZE * 3}</div></div><div class="level-grid">`;
+    for (let i = w * WORLD_SIZE + 1; i <= Math.min(LEVELS.length, (w + 1) * WORLD_SIZE); i++) {
       const rec = save.levels[i];
       const open = DEV || i <= save.maxLevel;
       const d = difficulty(i);

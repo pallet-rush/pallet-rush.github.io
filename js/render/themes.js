@@ -1,6 +1,6 @@
 // Optik je Welt (ab v0.6.5): Boden, Betonfläche, Beete, Pflanzen und Tageszeit.
-// Welten 1–10 haben je ein eigenes Thema passend zum Namen; Welten 11–20 nutzen
-// dieselben Themen in Abendstimmung, Welten 21–30 bei Nacht (mit leuchtenden
+// Welten 1–10 haben je ein eigenes Thema passend zum Namen; Welten 11–15 nutzen
+// ausgewählte Themen in Abendstimmung bzw. bei Nacht (mit leuchtenden
 // Laternen). LKWs, Paletten und Bänder werden nie eingefärbt, damit die Farben
 // im Spiel eindeutig bleiben – nur die feste Szene im Hintergrund.
 //
@@ -32,10 +32,20 @@ const BASE = [
     lawn: ['#ffe07a', '#f2b51c'], curb: '#fff3c4', treePal: ['#b07a00', '#e0a800', '#ffd23a', '#fff3a6'] },
 ];
 
-// Abweichungen einzelner Welten (Name passt sonst nicht)
-const EXTRA = {
-  16: { treePal: ['#a8410f', '#d9631a', '#f59a2e', '#ffd27a'], tree: 'leaf', lawn: ['#b8c95a', '#8aa63c'] }, // Herbstwald
-};
+// Herbstlaub statt Tannen (Welt „Herbstwald“)
+const AUTUMN = { treePal: ['#a8410f', '#d9631a', '#f59a2e', '#ffd27a'], tree: 'leaf', lawn: ['#b8c95a', '#8aa63c'] };
+
+// Ab v0.6.6: 20 Level je Welt → 15 Welten. Welten 1–10 bei Tag (je ein Grundthema),
+// 11–15 die schönsten Abend-/Nachtvarianten. Index = Welt-1, base = Index in BASE.
+export const WORLD_SIZE = 20;
+const WORLD_LOOK = [
+  ...BASE.map((_, i) => ({ base: i, time: 'day' })),
+  { base: 1, time: 'dusk' },                 // 11 Abendhafen
+  { base: 5, time: 'dusk', extra: AUTUMN },  // 12 Herbstwald
+  { base: 2, time: 'night' },                // 13 Sternenwüste
+  { base: 4, time: 'night' },                // 14 Neonnacht
+  { base: 9, time: 'night' },                // 15 Schatzkammer
+];
 
 export const DEFAULT_THEME = {
   key: 'city', ground: null, groundFx: null, concrete: null, lawn: null, curb: null,
@@ -44,8 +54,7 @@ export const DEFAULT_THEME = {
 
 export function worldTheme(levelId) {
   if (!levelId) return { ...DEFAULT_THEME };
-  const w = Math.floor((levelId - 1) / 10) + 1;
-  const base = BASE[(w - 1) % 10];
-  const time = w <= 10 ? 'day' : w <= 20 ? 'dusk' : 'night';
-  return { ...DEFAULT_THEME, ...base, ...(EXTRA[w] || {}), time, world: w };
+  const w = Math.floor((levelId - 1) / WORLD_SIZE) + 1;
+  const look = WORLD_LOOK[Math.min(w, WORLD_LOOK.length) - 1];
+  return { ...DEFAULT_THEME, ...BASE[look.base], ...(look.extra || {}), time: look.time, world: w };
 }
