@@ -22,11 +22,14 @@
 //   sol: [ids]             (optional) eine Lösung, vom Generator mitgeliefert
 // }
 //
-// Die Schlange besteht aus Blöcken zu BLOCK (4) gleichfarbigen Paletten. Die
-// vordersten WINDOW (3) noch nicht verladenen Blöcke liegen an den drei
-// Ausgabeplätzen (Mitte, links, rechts) und können verladen werden, jeweils als
-// ganzer Block in einen geparkten LKW gleicher Farbe. Passt keiner davon, wartet
-// die Schlange. Sind dann alle Rampen belegt, ist das Level verloren.
+// Die Schlange besteht aus Blöcken zu BLOCK (4) gleichfarbigen Paletten. Sie läuft
+// auf zwei Zulieferbändern: Eine Farbgruppe (aufeinanderfolgende gleiche Blöcke)
+// bleibt auf einem Band, die nächste Gruppe kommt aufs andere (laneOf).
+// Drei Ausgabeplätze (ab v0.6.4): links nur vom linken Band, rechts nur vom rechten,
+// die Mitte von beiden (der vorderste wartende Block der beiden Bänder). Blöcke an
+// den Ausgabeplätzen können verladen werden, jeweils als ganzer Block in einen
+// geparkten LKW gleicher Farbe. Passt keiner davon, wartet die Schlange. Sind dann
+// alle Rampen belegt, ist das Level verloren.
 //
 // Jede Aktion liefert eine Liste von Ereignissen. Die Darstellung spielt diese
 // Ereignisse als Animation ab, die Logik ist dann schon fertig gerechnet.
@@ -42,6 +45,7 @@ import {
 
 export const BLOCK = 4;   // Paletten pro Block (eine Reihe auf dem Band)
 export const WINDOW = 3;  // gleichzeitig verladbare Blöcke (Ausgabeplätze)
+export const SLOTS = ['L', 'R', 'C']; // Reihenfolge beim Auffüllen
 
 function makeComps(t) {
   const caps = SIZES[t.s].caps;
@@ -86,6 +90,7 @@ export class Game {
     this.supply = parseSupply(level.supply);
     this.si = 0;        // erste Palette des vordersten noch nicht verladenen Blocks
     this.used = [];     // verladene Blöcke (1 = weg)
+    this.slot = { L: -1, R: -1, C: -1 }; // Block an jedem Ausgabeplatz (-1 = leer)
     this.moves = 0;
     this.departed = 0;
     this.extraUsed = false;
@@ -173,6 +178,8 @@ export class Game {
     g.supply = this.supply; // wird nur von Boni verändert, dann vorher kopiert
     g.si = this.si;
     g.used = this.used.slice();
+    g.slot = { ...this.slot };
+    g._lane = this._lane; g._laneSup = this._laneSup;
     g.moves = this.moves;
     g.departed = this.departed;
     g.extraUsed = this.extraUsed;
@@ -324,6 +331,9 @@ export class Game {
     const order = fb.concat(mb, rb.slice(mixN));
     this.supply = this.supply.slice();
     slots.forEach((b, k) => { for (let i = 0; i < BLOCK; i++) this.supply[b * BLOCK + i] = order[k][i]; });
+    // Neue Reihenfolge → Bänder und Ausgabeplätze neu belegen
+    this.slot = { L: -1, R: -1, C: -1 };
+    this._fillSlots();
     const ev = [{ type: 'shuffle' }];
     this._resolve(ev);
     this._afterResolve(ev);
@@ -426,12 +436,45 @@ export class Game {
     return false;
   }
 
+  // Band eines Blocks (0 = links, 1 = rechts): Farbgruppen wechseln das Band.
+  // Hängt nur von den Blöcken davor ab, darf also beim Erzeugen mitwachsen.
+  laneOf(b) {
+    if (this._laneSup !== this.supply) { this._laneSup = this.supply; this._lane = []; }
+    const ln = this._lane;
+    for (let i = ln.length; i <= b; i++) {
+      ln.push(i === 0 ? 0 : colorOf(this.supply[i * BLOCK]) === colorOf(this.supply[(i - 1) * BLOCK]) ? ln[i - 1] : 1 - ln[i - 1]);
+    }
+    return ln[b];
+  }
+
+  // Ausgabeplätze auffüllen: links/rechts mit dem nächsten Block ihres Bands,
+  // die Mitte mit dem vordersten wartenden Block beider Bänder.
+  _fillSlots() {
+    const sl = this.slot;
+    for (const k of SLOTS) if (sl[k] >= 0 && this.used[sl[k]]) sl[k] = -1;
+    if (sl.L >= 0 && sl.R >= 0 && sl.C >= 0) return;
+    const nb = Math.floor(this.supply.length / BLOCK);
+    const head = [-1, -1];
+    const taken = (b) => b === sl.L || b === sl.R || b === sl.C;
+    const next = (lane, from) => {
+      for (let b = from; b < nb; b++) if (!this.used[b] && !taken(b) && this.laneOf(b) === lane) return b;
+      return -1;
+    };
+    const s0 = this.si / BLOCK;
+    if (sl.L < 0) sl.L = next(0, s0);
+    if (sl.R < 0) sl.R = next(1, s0);
+    if (sl.C < 0) {
+      head[0] = next(0, s0); head[1] = next(1, s0);
+      sl.C = head[0] < 0 ? head[1] : head[1] < 0 ? head[0] : Math.min(head[0], head[1]);
+    }
+  }
+
   // Die verladbaren Blöcke (Nummern) an den Ausgabeplätzen, vorderster zuerst.
   openBlocks() {
+    this._fillSlots();
     const out = [];
-    const nb = Math.floor(this.supply.length / BLOCK);
-    for (let b = this.si / BLOCK; b < nb && out.length < WINDOW; b++) if (!this.used[b]) out.push(b);
-    return out;
+    for (const k of SLOTS) if (this.slot[k] >= 0) out.push(this.slot[k]);
+    return out.sort((a, b) => a - b);
   }
 
   // Vorderste Palette der Schlange (oder -1, wenn leer).
@@ -531,10 +574,11 @@ export class Game {
         const tg = this._findTarget(c);
         if (!tg) continue;
         const id = this.ramps[tg.r];
+        const slot = SLOTS.find((k) => this.slot[k] === b); // Auslauf, über den der Block läuft
         for (let k = 0; k < BLOCK; k++) {
           const q = b * BLOCK + k;
           tg.comp.loaded++;
-          ev.push({ type: 'load', q, code: this.supply[q], ramp: tg.r, id, comp: tg.ci, color: c, n: tg.comp.loaded });
+          ev.push({ type: 'load', q, code: this.supply[q], ramp: tg.r, id, comp: tg.ci, color: c, n: tg.comp.loaded, slot });
         }
         this.used[b] = 1;
         this._advance();
@@ -590,6 +634,7 @@ export class Game {
 
   // Eindeutiger Schlüssel des Spielzustands für den Solver-Cache.
   key() {
+    this._fillSlots();
     let s = '';
     for (const t of this.trucks) s += t.state;
     for (const t of this.trucks) if (t.tt && t.state === LOT) s += t.dir;
@@ -600,7 +645,7 @@ export class Game {
     rs.sort();
     let u = '';
     for (let b = this.si / BLOCK, n = b + 12; b < n; b++) u += this.used[b] ? 1 : 0;
-    return s + '|' + rs.join(';') + '|' + this.si + u + '|' + this.ramps.length;
+    return s + '|' + rs.join(';') + '|' + this.si + u + '|' + this.ramps.length + '|' + this.slot.L + ',' + this.slot.R + ',' + this.slot.C;
   }
 }
 

@@ -75,7 +75,7 @@ async function generateParallel(from = 1, to = LEVEL_PLAN.length, workers = 16, 
   $('#log').textContent = '';
   // from als Liste von Level-Nummern: nur diese neu erzeugen, übrige Ergebnisse im Speicher behalten
   const list = Array.isArray(from);
-  if (!list) levels = await loadExisting();
+  if (!list || !levels.length) levels = await loadExisting();
   window.genStatus = 'running';
   window.genFailed = [];
   const todo = list ? from.map((n) => n - 1) : [];

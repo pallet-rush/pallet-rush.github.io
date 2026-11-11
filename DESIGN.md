@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 11.11.2026 · Version 0.6.3
+Stand: 11.11.2026 · Version 0.6.4
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -31,7 +31,7 @@ Inhalte übernommen.
 | Antippen | Der LKW fährt vorwärts in Pfeilrichtung (Fahrerhaus = vorne) aus dem Hof. Ist der Weg durch einen LKW versperrt, fährt er bis an diesen heran, stößt kurz an (der Blocker blinkt) und setzt zurück – so sieht man sofort, wer im Weg steht (ab v0.4.9). Bei anderen Hindernissen ruckelt er nur kurz. |
 | Rampe nötig | Ein LKW fährt nur los, wenn eine Rampe frei ist. Sonst kommt der Hinweis „Keine Rampe frei“. |
 | Zuglimit | Keins. |
-| Beladen | Die Schlange besteht aus Blöcken zu 4 gleichfarbigen Paletten. Die vordersten 3 noch nicht verladenen Blöcke liegen an den Ausgabeplätzen (links, Mitte, rechts) und werden jeweils als ganzer Block in einen geparkten LKW gleicher Farbe geladen (vorderster Block zuerst). Passt keiner davon, wartet die Schlange. Bei zwei passenden LKWs bekommt der den Block, dem am wenigsten bis „voll“ fehlt. Ein frei gewordener Ausgabeplatz wird mit dem nächsten Block der Schlange gefüllt. |
+| Beladen | Die Schlange besteht aus Blöcken zu 4 gleichfarbigen Paletten. Die Schlange läuft auf zwei Zulieferbändern (jede Farbgruppe auf einem Band, die nächste Gruppe auf dem anderen). Der linke Ausgabeplatz bekommt nur Blöcke vom linken Band, der rechte nur vom rechten, die Mitte den vordersten wartenden Block beider Bänder (ab v0.6.4; vorher einfach die vordersten 3 Blöcke). Die Blöcke an den Ausgabeplätzen werden jeweils als ganzer Block in einen geparkten LKW gleicher Farbe geladen (vorderster Block zuerst). Passt keiner davon, wartet die Schlange. Bei zwei passenden LKWs bekommt der den Block, dem am wenigsten bis „voll“ fehlt. Ein frei gewordener Ausgabeplatz wird mit dem nächsten Block der Schlange gefüllt. |
 | Paletten-Blöcke | Paletten kommen immer in Blöcken zu 4 gleichfarbigen Paletten, die nebeneinander auf dem breiten Band fahren. Alle Ladekapazitäten (8 / 24 / 40) sind Vielfache von 4. Farbgruppen bleiben auf einer Bandseite, die Gruppen wechseln sich links/rechts ab. |
 | Schlange | Feste Reihenfolge. Sie kommt aus zwei Hallentoren über gerade Zulieferbänder, die in das runde Förderband münden; beide Spuren treffen sich unten am mittleren Auslauf (seit v0.4.4 ohne Weiche und Ladestation). Man sieht etwa 20 Paletten im Voraus. |
 | Abfahrt | Ein voller LKW fährt sofort ab, die Rampe ist frei. |
@@ -281,11 +281,14 @@ mit Münzen kaufen.
   wer zuerst losgefahren ist; niemand fährt ineinander.
 - Die drei Ausläufe arbeiten gleichzeitig (ab v0.4.9): Jeder schickt seine Paletten der
   Reihe nach über seine eigene Rutsche, mehrere Rutschen laufen parallel.
-- Seitenregel (ab v0.6.3): Das linke Zulieferband beliefert nur den linken und den
-  mittleren Auslauf, das rechte nur den rechten und den mittleren. Kein Block fährt
-  quer über die Mitte. Sind eigener und mittlerer Auslauf belegt, wartet der dritte
-  Block derselben Seite spielbar (gelb markiert) in der Reihe direkt hinter seinem
-  Auslauf und läuft über dieselbe Rutsche; wird vorne etwas frei, rückt er nach.
+- Seitenregel (ab v0.6.4, Teil der Spielregeln in `js/core/model.js`): Das linke
+  Zulieferband beliefert nur den linken und den mittleren Auslauf, das rechte nur den
+  rechten und den mittleren. Kein Block fährt quer über die Mitte, es gibt immer genau
+  eine gelbe Reihe je Auslauf. Hat ein Band keinen Block mehr, bleibt sein Auslauf leer.
+  (v0.6.3 hatte stattdessen einen zweiten gelben Warteplatz – verworfen.) Die
+  Darstellung übernimmt die Plätze aus der Spiellogik; ein neuer Block rückt erst
+  nach, wenn die Paletten des vorigen sichtbar weg sind. 297 der 300 Level waren mit
+  ihrer Lösung weiter lösbar, nur 48, 86 und 101 wurden neu erzeugt.
 - Paletten sehen aus wie echte Holzpaletten mit farbiger Ladung. Beim Laden
   rutschen sie von ihrem eigenen Auslauf über die Rutsche auf die Rollenbahn,
   von dort über die Rutsche der Bucht und hüpfen auf ihren Platz im LKW.

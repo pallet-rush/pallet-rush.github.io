@@ -184,6 +184,7 @@ export class GameView {
     this.vHead = 0;
     this.pp = new Map(); // aktuelle Position jeder sichtbaren Palette
     this._slotOf = new Map();
+    this._seen = new Map(); this._qSup = null;
     this.qMoving = false;
     this.frameDt = 16;
     this.nextLoadAt = 0;
@@ -511,7 +512,14 @@ export class GameView {
       switch (ev.type) {
         case 'exit': this.evExit(ev, now); break;
         case 'reveal': { const tv = this.tvs[ev.id]; tv.revealAt = now; tv.hidden = false; this.lotDirty = true; break; }
-        case 'load': this.loads.push(ev); this.tvs[ev.id].pending++; break;
+        case 'load': {
+          this.loads.push(ev);
+          this.tvs[ev.id].pending++;
+          // Auslauf merken – auch für Blöcke, die zwischen zwei Bildern kommen und gehen
+          const blk = Math.floor(ev.q / COLS);
+          if (ev.slot && !this._seen.has(blk)) this._seen.set(blk, { sl: ev.slot, n: (this._seq = (this._seq || 0) + 1) });
+          break;
+        }
         case 'depart': this.tvs[ev.id].pendingDepart = ev; break;
         case 'spawn': this.evSpawn(ev, now); break;
         case 'rotate': this.evRotate(ev, now); break;
@@ -951,7 +959,7 @@ export class GameView {
       const ev = this.loads[i];
       const tv = this.tvs[ev.id];
       const sl = this._slotOf.get(Math.floor(ev.q / COLS));
-      const ch = sl && sl[0]; // Rutsche: L2/R2 nutzen die Rutsche ihrer Seite
+      const ch = sl; // jeder Auslauf hat seine eigene Rutsche
       if (!sl || busy.has(ch) || now < (this.slotNext[ch] || 0) || tv.state !== 'dock' || now - tv.dockAt < 160) {
         if (sl) busy.add(ch); // Reihenfolge je Rutsche wahren
         i++;
@@ -1481,9 +1489,8 @@ export class GameView {
     const L = this.L;
     // Alle drei gleich: eine Reihe aus 4 Paletten quer zum Band; Mitte = Bandende unten
     if (slot === 'C') return this.lanePos(0, 0, k);
-    const lane = slot[0] === 'L' ? 0 : 1;
-    // L2/R2: Warteplatz direkt hinter dem seitlichen Auslauf (gleiche Rutsche)
-    return this.lanePos(lane, this.rowDists(lane)[slot.length > 1 ? 1 : 0], k);
+    const lane = slot === 'L' ? 0 : 1;
+    return this.lanePos(lane, this.rowDists(lane)[0], k);
   }
   // Abstände der Palettenreihen je Spur (vom Bandende gemessen). [0] = seitlicher Auslauf,
   // so nah an der Mitte wie möglich ohne Überschneidung mit dem mittleren Auslauf;
@@ -1543,52 +1550,45 @@ export class GameView {
   drawQueue(ctx, now, g) {
     const pop = clamp((now - this.popAt) / 450, 0, 1);
     const sup = g.supply, nb = Math.floor(sup.length / COLS);
-    // Farbgruppen (aufeinanderfolgende gleiche Blöcke) bleiben auf einer Bandseite
-    if (this._qSup !== sup || this._qLen !== sup.length) {
-      this._qSup = sup; this._qLen = sup.length;
-      const laneOf = new Int8Array(nb + 1);
-      let run = 0;
-      for (let b = 0; b < nb; b++) {
-        if (b > 0 && sup[b * COLS] !== sup[(b - 1) * COLS]) run++;
-        laneOf[b] = run & 1;
-      }
-      this._qLane = laneOf;
+    // Band je Block und Ausgabeplätze kommen aus der Spiellogik (ab v0.6.4): links nur
+    // vom linken Band, rechts nur vom rechten, Mitte von beiden. Hier wird nur gemerkt,
+    // wann welcher Block welchem Platz zugeteilt wurde; ein neuer Block rückt erst in
+    // seinen Platz, wenn die Paletten des vorigen Blocks sichtbar weg sind.
+    if (this._qSup !== sup) {
+      this._qSup = sup;
+      const old = this._seen || new Map();
+      this._seen = new Map();
+      for (const [b, v] of old) if (g.used[b]) this._seen.set(b, v); // laufende Verladungen behalten
+      this._seq = this._seq || 0;
     }
-    const laneOf = this._qLane;
+    g.openBlocks();
+    for (const k of ['L', 'R', 'C']) {
+      const b = g.slot[k];
+      if (b >= 0 && !this._seen.has(b)) this._seen.set(b, { sl: k, n: this._seq++ });
+    }
+    const seen = this._seen;
     const gone = this.vGone;
     const blockGone = (b) => { for (let k = 0; k < COLS; k++) if (!gone.has(b * COLS + k)) return false; return true; };
     let b0 = this.vHead;
     while (b0 < nb && blockGone(b0)) b0++;
     this.vHead = b0;
-    const open = [];
-    const rest = [];
-    for (let b = b0; b < nb && rest.length < 50; b++) {
+    const vis = [];
+    const occ = {};
+    for (let b = b0; b < nb && vis.length < 60; b++) {
       if (blockGone(b)) continue;
-      if (open.length < WINDOW) open.push(b); else rest.push(b);
+      vis.push(b);
+      const v = seen.get(b);
+      if (v && (occ[v.sl] === undefined || seen.get(occ[v.sl]).n > v.n)) occ[v.sl] = b;
     }
-    this._frontLane = open.length ? laneOf[open[0]] : 0;
-    // Plätze vergeben: bisherige behalten, sonst eigene Seite, dann Mitte. Ein Band
-    // beliefert nie den Auslauf der anderen Seite (ab v0.6.3). Sind eigener und mittlerer
-    // Auslauf belegt, wartet der Block spielbar in der Reihe dahinter (L2/R2) und läuft
-    // über die Rutsche seiner Seite; sobald etwas frei wird, rückt er nach.
-    const prev = this._slotOf;
     const slotOf = new Map();
-    const taken = {};
-    for (const b of open) {
-      const sl = prev.get(b);
-      if (sl && sl.length === 1 && !taken[sl]) { taken[sl] = 1; slotOf.set(b, sl); }
-    }
-    for (const b of open) {
-      if (slotOf.has(b)) continue;
-      const own = laneOf[b] === 0 ? 'L' : 'R';
-      const sl = !taken[own] ? own : !taken.C ? 'C' : own + '2';
-      taken[sl] = 1;
-      slotOf.set(b, sl);
-    }
+    for (const k of ['L', 'R', 'C']) if (occ[k] !== undefined) slotOf.set(occ[k], k);
+    const open = vis.filter((b) => slotOf.has(b));
+    const rest = vis.filter((b) => !slotOf.has(b));
+    const laneOf = (b) => g.laneOf(b);
     this._slotOf = slotOf;
     // Ausgabeplätze markieren (Fläche darunter, Rahmen später darüber)
     const busySlots = new Set(slotOf.values());
-    const pads = ['L', 'C', 'R', ...['L2', 'R2'].filter((sl) => busySlots.has(sl))];
+    const pads = ['L', 'C', 'R'];
     for (const sl of pads) this.drawSlotPad(ctx, sl, busySlots.has(sl), now, 'fill');
     // Zielpositionen
     const target = [];
@@ -1596,9 +1596,9 @@ export class GameView {
       const sl = slotOf.get(b);
       for (let k = 0; k < COLS; k++) target.push([b * COLS + k, this.slotPos(sl, k), true]);
     }
-    const cnt = [busySlots.has('L2') ? 2 : 1, busySlots.has('R2') ? 2 : 1];
+    const cnt = [1, 1];
     for (const b of rest) {
-      const ln = laneOf[b];
+      const ln = laneOf(b);
       const dist = this.rowDists(ln)[cnt[ln]++];
       if (dist === undefined) continue;
       for (let k = 0; k < COLS; k++) target.push([b * COLS + k, this.lanePos(ln, dist, k), false]);
