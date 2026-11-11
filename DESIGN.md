@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 11.11.2026 · Version 0.6.4
+Stand: 11.11.2026 · Version 0.6.5
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -289,6 +289,15 @@ mit Münzen kaufen.
   Darstellung übernimmt die Plätze aus der Spiellogik; ein neuer Block rückt erst
   nach, wenn die Paletten des vorigen sichtbar weg sind. 297 der 300 Level waren mit
   ihrer Lösung weiter lösbar, nur 48, 86 und 101 wurden neu erzeugt.
+- Welt-Optik (ab v0.6.5, `js/render/themes.js`): Jede Welt sieht passend zu ihrem
+  Namen aus – Boden, Muster, Betonflächen, Beete und Pflanzen: 1 Stadt (Standard),
+  2 Hafen (Wasser mit Wellen), 3 Wüste (Sand, Kakteen), 4 Schnee (verschneite
+  Tannen), 5 Neon (dunkles Leuchtgitter, Neonbäume), 6 Wald (Moos, Tannen),
+  7 Tropen (Sand, Palmen), 8 Fabrik (Kies, olivgrün), 9 Flughafen (Asphalt mit
+  Markierungen), 10 Gold (glitzernd, goldene Bäume). Welten 11–20 nutzen dieselben
+  Themen in warmer Abendstimmung (16 Herbstwald mit Herbstlaub), Welten 21–30 bei
+  Nacht (dunkelblau, leuchtende Laternen). Eingefärbt wird nur die feste Szene;
+  LKWs, Paletten und Bänder behalten ihre Farben, damit das Spiel lesbar bleibt.
 - Paletten sehen aus wie echte Holzpaletten mit farbiger Ladung. Beim Laden
   rutschen sie von ihrem eigenen Auslauf über die Rutsche auf die Rollenbahn,
   von dort über die Rutsche der Bucht und hüpfen auf ihren Platz im LKW.

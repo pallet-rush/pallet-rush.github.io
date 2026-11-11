@@ -35,6 +35,9 @@ const _shCache = new Map();
 // Farbe aufhellen (f > 0) oder abdunkeln (f < 0), Ergebnis gecacht.
 // Cleaner Look: ruhige, flache Flächen ohne Körnung/Flecken (moderner Spielzeug-Stil).
 export const STYLE = { clean: true };
+// Welt-Thema (siehe themes.js); wird von der Szene vor dem Zeichnen gesetzt.
+export const THEME = { tree: 'leaf' };
+export function setTheme(t) { for (const k of Object.keys(THEME)) delete THEME[k]; Object.assign(THEME, t); }
 
 export function shade(hex, f) {
   const k = hex + '|' + f;
@@ -188,11 +191,13 @@ export function drawGrass(ctx, x, y, w, h, seed = 1) {
   ctx.clip();
   const g = ctx.createLinearGradient(x, y, x + w * 0.3, y + h);
   if (STYLE.clean) {
-    // ruhiger, heller Lavendel-Grau-Boden
-    g.addColorStop(0, '#dadded');
-    g.addColorStop(1, '#c9cde0');
+    // ruhiger, heller Lavendel-Grau-Boden (oder Boden des Welt-Themas)
+    const gc = THEME.ground || ['#dadded', '#c9cde0'];
+    g.addColorStop(0, gc[0]);
+    g.addColorStop(1, gc[1]);
     ctx.fillStyle = g;
     ctx.fillRect(x, y, w, h);
+    if (THEME.groundFx) groundFx(ctx, x, y, w, h, THEME.groundFx, R);
     ctx.restore();
     return;
   }
@@ -280,6 +285,65 @@ export function drawGrass(ctx, x, y, w, h, seed = 1) {
   ctx.restore();
 }
 
+// Muster auf dem Boden je Thema: Wellen, Sandkörner, Schneeglitzer, Neon-Raster …
+function groundFx(ctx, x, y, w, h, fx, R) {
+  const area = w * h;
+  if (fx === 'water') {
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    for (let i = 0; i < area / 1400; i++) {
+      const px = x + R() * w, py = y + R() * h, s = 5 + R() * 7;
+      ctx.moveTo(px - s, py);
+      ctx.quadraticCurveTo(px - s / 2, py - 2.4, px, py);
+      ctx.quadraticCurveTo(px + s / 2, py + 2.4, px + s, py);
+    }
+    ctx.stroke();
+    return;
+  }
+  if (fx === 'grid') {
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(80,220,255,0.16)';
+    ctx.beginPath();
+    for (let gx = Math.floor(x / 24) * 24; gx < x + w; gx += 24) { ctx.moveTo(gx, y); ctx.lineTo(gx, y + h); }
+    for (let gy = Math.floor(y / 24) * 24; gy < y + h; gy += 24) { ctx.moveTo(x, gy); ctx.lineTo(x + w, gy); }
+    ctx.stroke();
+    return;
+  }
+  if (fx === 'tarmac') {
+    ctx.fillStyle = 'rgba(255,214,0,0.55)';
+    for (let gy = Math.floor(y / 90) * 90 + 40; gy < y + h; gy += 90) {
+      for (let gx = Math.floor(x / 26) * 26; gx < x + w; gx += 26) ctx.fillRect(gx, gy, 14, 2);
+    }
+  }
+  const dots = {
+    sand: [['rgba(190,130,50,0.25)', 1.2], ['rgba(255,250,220,0.5)', 1]],
+    snow: [['rgba(150,180,220,0.25)', 1.2], ['rgba(255,255,255,0.9)', 1.4]],
+    moss: [['rgba(60,130,50,0.22)', 1.6], ['rgba(240,255,200,0.35)', 1]],
+    gravel: [['rgba(90,80,70,0.3)', 1.5], ['rgba(255,255,255,0.35)', 1.1]],
+    tarmac: [['rgba(60,70,90,0.18)', 1.2]],
+    sparkle: [['rgba(200,140,0,0.25)', 1.2], ['rgba(255,255,255,0.8)', 1.2]],
+  }[fx] || [];
+  for (const [c, sz] of dots) {
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    for (let i = 0; i < area / 90; i++) ctx.rect(x + R() * w, y + R() * h, sz, sz);
+    ctx.fill();
+  }
+  if (fx === 'sand') {
+    // sanfte Dünenwellen
+    ctx.strokeStyle = 'rgba(200,140,60,0.22)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < area / 3000; i++) {
+      const px = x + R() * w, py = y + R() * h, s = 10 + R() * 14;
+      ctx.moveTo(px - s, py); ctx.quadraticCurveTo(px, py - 5, px + s, py);
+    }
+    ctx.stroke();
+  }
+}
+
 // Heller Beton mit Plattenfugen, Tönungen, Flecken und Haarrissen.
 // o = { joints: true, slab: 64 }
 export function drawConcrete(ctx, x, y, w, h, seed = 1, o = {}) {
@@ -291,8 +355,9 @@ export function drawConcrete(ctx, x, y, w, h, seed = 1, o = {}) {
   ctx.clip();
   const g = ctx.createLinearGradient(x, y, x + w, y + h);
   // kühles, sauberes Grau-Blau: passt zum blauen UI und lässt die Farben strahlen
-  g.addColorStop(0, o.c0 || (STYLE.clean ? '#eceef6' : '#e8eef6'));
-  g.addColorStop(1, o.c1 || (STYLE.clean ? '#e0e3ef' : '#d6dfeb'));
+  const tc = THEME.concrete;
+  g.addColorStop(0, o.c0 || (tc ? tc[0] : STYLE.clean ? '#eceef6' : '#e8eef6'));
+  g.addColorStop(1, o.c1 || (tc ? tc[1] : STYLE.clean ? '#e0e3ef' : '#d6dfeb'));
   ctx.fillStyle = g;
   ctx.fillRect(x, y, w, h);
   if (STYLE.clean) {
@@ -1705,12 +1770,113 @@ function castShadow(ctx, x, y, r, len, a = 0.3) {
 
 // Baum in Schrägaufsicht: Schlagschatten, sichtbarer Stamm, Krone aus schattierten Kugeln.
 export function drawTree(ctx, x, y, r, variant = 0) {
-  if (STYLE.clean) return drawTree3D(ctx, x, y, r, variant);
+  if (THEME.tree === 'palm') return drawPalm(ctx, x, y, r, variant);
+  if (THEME.tree === 'cactus') return drawCactus(ctx, x, y, r, variant);
+  if (THEME.tree === 'pine') variant = 5;
+  if (STYLE.clean) {
+    drawTree3D(ctx, x, y, r, variant);
+    if (THEME.snow) snowCap(ctx, x, y - r, r);
+    if (THEME.tree === 'neon') neonGlow(ctx, x, y - r, r);
+    return;
+  }
   return drawTreeFlat(ctx, x, y, r, variant);
 }
 
+// Schneehaube oben auf einer Krone
+function snowCap(ctx, x, cy, r) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.beginPath();
+  for (const [dx, dy, rr2] of [[-0.25, -0.1, 0.42], [0.18, -0.2, 0.36], [-0.05, -0.45, 0.3]]) {
+    ctx.moveTo(x + dx * r + rr2 * r, cy + dy * r);
+    ctx.ellipse(x + dx * r, cy + dy * r, rr2 * r, rr2 * r * 0.55, 0, 0, TAU);
+  }
+  ctx.fill();
+  ctx.restore();
+}
+// Leuchtender Rand für Neon-Bäume
+function neonGlow(ctx, x, cy, r) {
+  ctx.save();
+  const g = ctx.createRadialGradient(x, cy, r * 0.6, x, cy, r * 1.5);
+  g.addColorStop(0, 'rgba(255,90,255,0)');
+  g.addColorStop(0.5, 'rgba(255,90,255,0.22)');
+  g.addColorStop(1, 'rgba(60,220,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(x - r * 1.6, cy - r * 1.6, r * 3.2, r * 3.2);
+  ctx.restore();
+}
+
+// Palme: gebogener, geringelter Stamm und Wedel aus der Krone
+function drawPalm(ctx, x, y, r, variant = 0) {
+  const R = rng(((x * 13 + y * 7) | 0) + variant * 31);
+  const H = r * 1.9, lean = (variant % 2 ? -1 : 1) * r * 0.35;
+  const tx = x + lean, ty = y - H;
+  ctx.save();
+  castShadow(ctx, x, y, r * 0.9, r * 1.1, 0.3);
+  ellipse(ctx, x, y, r * 0.22, r * 0.09, 'rgba(40,40,70,0.35)');
+  for (let i = 0; i <= 10; i++) {
+    const t = i / 10;
+    const px = x + lean * t * t, py = y - H * t;
+    const w = r * (0.2 - t * 0.06);
+    ellipse(ctx, px, py, w, w * 0.55, i % 2 ? '#9a6b3c' : '#b98652');
+  }
+  const n = 7;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU + R() * 0.3;
+    const L = r * (1.05 + R() * 0.2);
+    const ex = tx + Math.cos(a) * L, ey = ty + Math.sin(a) * L * 0.6 + L * 0.25;
+    const mx = tx + Math.cos(a) * L * 0.55, my = ty + Math.sin(a) * L * 0.35 - L * 0.12;
+    const nx = -Math.sin(a) * r * 0.2, ny = Math.cos(a) * r * 0.12;
+    ctx.fillStyle = i % 2 ? '#1f9a4a' : '#2fbf5a';
+    ctx.beginPath();
+    ctx.moveTo(tx, ty);
+    ctx.quadraticCurveTo(mx + nx, my + ny, ex, ey);
+    ctx.quadraticCurveTo(mx - nx, my - ny, tx, ty);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(200,255,170,0.6)';
+    ctx.lineWidth = Math.max(0.6, r * 0.04);
+    ctx.beginPath(); ctx.moveTo(tx, ty); ctx.quadraticCurveTo(mx, my, ex, ey); ctx.stroke();
+  }
+  circle(ctx, tx - r * 0.08, ty + r * 0.05, r * 0.11, '#7a4a1e');
+  circle(ctx, tx + r * 0.1, ty + r * 0.08, r * 0.1, '#6a3f18');
+  ctx.restore();
+}
+
+// Kaktus: Säule mit zwei Armen, Rippen und Blüte
+function drawCactus(ctx, x, y, r, variant = 0) {
+  const H = r * 1.8, w = r * 0.42;
+  const s = variant % 2 ? -1 : 1;
+  ctx.save();
+  castShadow(ctx, x, y, r * 0.5, r * 1.0, 0.3);
+  ellipse(ctx, x, y, w * 0.7, w * 0.3, 'rgba(60,50,30,0.35)');
+  const body = (bx, by, bw, bh) => {
+    const g = ctx.createLinearGradient(bx - bw / 2, 0, bx + bw / 2, 0);
+    g.addColorStop(0, '#7fd06a'); g.addColorStop(0.45, '#3fa54a'); g.addColorStop(1, '#22703a');
+    fillRR(ctx, bx - bw / 2, by - bh, bw, bh, bw / 2, g);
+    ctx.strokeStyle = 'rgba(20,80,30,0.35)';
+    ctx.lineWidth = Math.max(0.5, bw * 0.06);
+    ctx.beginPath();
+    for (const k of [-0.22, 0.12]) { ctx.moveTo(bx + bw * k, by - bh + bw * 0.4); ctx.lineTo(bx + bw * k, by - bw * 0.2); }
+    ctx.stroke();
+  };
+  // linker/rechter Arm: waagerechter Ansatz + senkrechte Säule
+  const arm = (dir, ay, len, ah) => {
+    const ax = x + dir * len;
+    fillRR(ctx, Math.min(x, ax) - w * 0.15, ay - w * 0.5, Math.abs(ax - x) + w * 0.3, w * 0.5, w * 0.25, '#3fa54a');
+    body(ax, ay, w * 0.58, ah);
+  };
+  arm(-s, y - H * 0.42, w * 1.05, H * 0.42);
+  arm(s, y - H * 0.28, w * 0.95, H * 0.3);
+  body(x, y, w, H);
+  circle(ctx, x - w * 0.1, y - H + w * 0.15, w * 0.26, '#ff5fa2');
+  circle(ctx, x - w * 0.1, y - H + w * 0.15, w * 0.1, '#ffe06a');
+  ctx.restore();
+}
+
 function drawTree3D(ctx, x, y, r, variant) {
-  const v = TREES[((variant % TREES.length) + TREES.length) % TREES.length];
+  let v = TREES[((variant % TREES.length) + TREES.length) % TREES.length];
+  if (THEME.treePal && !v.pine) v = { c: THEME.treePal };
+  if (THEME.tree === 'neon') v = { c: ['#7a1d9e', '#b92fd6', '#ff6cf0', '#ffd6ff'] };
   const R = rng(((x * 13 + y * 7) | 0) + variant * 101);
   const lift = r * 1.0;          // Kronenmitte über dem Fußpunkt
   const cy = y - lift;
@@ -1915,7 +2081,7 @@ function drawTreeFlat(ctx, x, y, r, variant) {
 export function drawBush(ctx, x, y, r, seed = 1) {
   if (STYLE.clean) {
     const R = rng(seed * 977 + 3);
-    const pal = R() < 0.5 ? ['#1e7a36', '#3aa84a', '#6fd25c', '#c4f59a'] : ['#18703f', '#2f9c56', '#5cc874', '#b8f0c0'];
+    const pal = THEME.bushPal || THEME.treePal || (R() < 0.5 ? ['#1e7a36', '#3aa84a', '#6fd25c', '#c4f59a'] : ['#18703f', '#2f9c56', '#5cc874', '#b8f0c0']);
     ctx.save();
     castShadow(ctx, x + r * 0.1, y + r * 0.1, r * 1.0, r * 0.9, 0.3);
     const lift = r * 0.45;
@@ -1982,16 +2148,18 @@ export function drawLawn(ctx, x, y, w, h, r = 10, o = {}) {
   // Wurfschatten
   for (let k = 0; k < 3; k++) fillRR(ctx, x + 1.5 + k, y + side + 1 + k, w, h, r, 'rgba(40,44,80,0.07)');
   // Bordstein: Seitenfläche und Oberseite
-  fillRR(ctx, x, y + side, w, h, r, '#9aa1b8');
+  const kc = THEME.curb || '#ffffff';
+  fillRR(ctx, x, y + side, w, h, r, THEME.curb ? shade(kc, -0.35) : '#9aa1b8');
   const cg = ctx.createLinearGradient(0, y, 0, y + h);
-  cg.addColorStop(0, '#ffffff');
-  cg.addColorStop(1, '#e3e6f0');
+  cg.addColorStop(0, kc);
+  cg.addColorStop(1, THEME.curb ? shade(kc, -0.12) : '#e3e6f0');
   fillRR(ctx, x, y, w, h, r, cg);
-  // Rasen
+  // Rasen (oder Sand, Schnee … je Thema)
   const gx = x + curb, gy = y + curb, gw = w - curb * 2, gh = h - curb * 2, gr = Math.max(1, r - curb);
   const gg = ctx.createLinearGradient(gx, gy, gx + gw * 0.4, gy + gh);
-  gg.addColorStop(0, '#7fe05a');
-  gg.addColorStop(1, '#3fb84a');
+  const lc = THEME.lawn || ['#7fe05a', '#3fb84a'];
+  gg.addColorStop(0, lc[0]);
+  gg.addColorStop(1, lc[1]);
   fillRR(ctx, gx, gy, gw, gh, gr, gg);
   ctx.save();
   ctx.beginPath(); rr(ctx, gx, gy, gw, gh, gr); ctx.clip();

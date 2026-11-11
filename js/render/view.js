@@ -21,6 +21,7 @@ import { GATE_W, GATE_BACK, BODY_W, bodyLen, LOT_K } from '../core/geom.js';
 import { t as tr } from '../i18n.js';
 import { drawVehicle, drawPallet, vehicleSlot, vehicleLength, vehicleWidth } from './vehicles.js';
 import * as P from './props.js';
+import { worldTheme } from './themes.js';
 import { sfx, vibrate } from '../audio.js';
 
 const FW = 390; // Breite der Fabrik (Hochformat: ganze Szene)
@@ -1281,6 +1282,10 @@ export class GameView {
     c.height = this.canvas.height;
     const ctx = c.getContext('2d');
     const d = this.dpr;
+    // Welt-Thema (Boden, Pflanzen, Tageszeit) nach der Level-Nummer
+    const theme = worldTheme(this.game?.level?.id);
+    P.setTheme(theme);
+    this._lamps = [];
     ctx.setTransform(d, 0, 0, d, 0, 0);
     // Rasen über die ganze Fläche (auch Ränder)
     P.drawGrass(ctx, 0, 0, this.cw, this.ch, 7);
@@ -1340,8 +1345,52 @@ export class GameView {
       ctx.drawImage(tmp, 0, 0);
       ctx.filter = 'none';
     }
+    this.applyDaytime(ctx, c, theme.time);
+    P.setTheme({ tree: 'leaf' });
     this.sceneCanvas = c;
     this.sceneDirty = false;
+  }
+
+  // Tageszeit nur auf der festen Szene (Bänder, LKWs, Paletten bleiben hell):
+  // Abend = warmes Licht, Nacht = dunkelblau mit leuchtenden Laternen.
+  applyDaytime(ctx, c, time) {
+    if (time !== 'dusk' && time !== 'night') return;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'multiply';
+    const g = ctx.createLinearGradient(0, 0, 0, c.height);
+    if (time === 'dusk') {
+      g.addColorStop(0, '#ffb08c');
+      g.addColorStop(0.5, '#ffc7a0');
+      g.addColorStop(1, '#f2b6c4');
+    } else {
+      g.addColorStop(0, '#3b4785');
+      g.addColorStop(1, '#4a5aa0');
+    }
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.restore();
+    if (time !== 'night' || !this._lamps.length) return;
+    // Laternen: Lichtkegel am Boden und leuchtender Kopf
+    const d = this.dpr;
+    ctx.save();
+    ctx.setTransform(d * this.scale, 0, 0, d * this.scale, d * this.offX, 0);
+    ctx.globalCompositeOperation = 'lighter';
+    for (const [x, y, s] of this._lamps) {
+      const gx = x + s * 0.5, gy = y + s * 0.2;
+      const pool = ctx.createRadialGradient(gx, gy, 0, gx, gy, s * 2.6);
+      pool.addColorStop(0, 'rgba(255,200,110,0.55)');
+      pool.addColorStop(1, 'rgba(255,200,110,0)');
+      ctx.fillStyle = pool;
+      ctx.fillRect(gx - s * 2.6, gy - s * 2.6, s * 5.2, s * 5.2);
+      const hx = x + s * 0.5, hy = y - s * 1.9;
+      const head = ctx.createRadialGradient(hx, hy, 0, hx, hy, s * 0.9);
+      head.addColorStop(0, 'rgba(255,240,190,0.9)');
+      head.addColorStop(1, 'rgba(255,220,140,0)');
+      ctx.fillStyle = head;
+      ctx.fillRect(hx - s, hy - s, s * 2, s * 2);
+    }
+    ctx.restore();
   }
 
   beltPaths() {
@@ -1443,6 +1492,7 @@ export class GameView {
         P.drawBush(ctx, x0 + w * 0.8, ly + lh - 14, 8, 3);
         P.drawTree(ctx, x0 + w * 0.42, ly + lh * 0.66, 24, 0);
         P.drawLamp(ctx, x0 + 9, ly + lh - 8, 11);
+        this._lamps.push([x0 + 9, ly + lh - 8, 11]);
         // Arbeitsbereich: Palettenstapel und geparkter Stapler
         P.drawPalletStack(ctx, x0 + 12, bottom - 10, 15, 4);
         P.drawPalletStack(ctx, x0 + 30, bottom - 6, 15, 2);
@@ -1452,6 +1502,7 @@ export class GameView {
         P.drawTree(ctx, x0 + w * 0.56, ly + lh * 0.62, 22, 2);
         P.drawBush(ctx, x0 + w - 12, ly + 18, 7, 8);
         P.drawLamp(ctx, x0 + w - 16, ly + lh - 8, 11);
+        this._lamps.push([x0 + w - 16, ly + lh - 8, 11]);
         P.drawPlanter(ctx, x0 + 14, bottom - 22, 7, 2);
         P.drawPlanter(ctx, x0 + 34, bottom - 12, 7, 6);
         P.drawCone(ctx, x0 + w - 18, bottom - 18, 9);
