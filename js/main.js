@@ -3,6 +3,7 @@
 import { VERSION } from './version.js';
 import { LEVELS } from './data/levels.js';
 import { Game } from './core/model.js';
+import { DIRS } from './core/constants.js';
 import { GameView } from './render/view.js';
 import { WORLD_SIZE } from './render/themes.js';
 import { loadSave, writeSave } from './save.js';
@@ -119,6 +120,8 @@ let usedBoosters = 0; // eingesetzte Boni im aktuellen Versuch (für Sterne)
 let duel = null;
 // Live-Duell: { link, code, host, opp: { n, max }, round, ready, myTime, oppTime, oppProg, over, countdown }
 let live = null;
+// Koop (ab v0.7.0): { me: 0 Gastgeber | 1 Gast, round, owner: Int8Array, over }
+let coop = null;
 
 // ---------- Menü ----------
 function showMenu() {
@@ -162,7 +165,8 @@ function startLevel(n) {
   $('#menu').classList.add('hidden');
   $('#hud').classList.remove('hidden');
   $('#boosters').classList.remove('hidden');
-  document.body.classList.toggle('duel-mode', !!duel);
+  document.body.classList.toggle('duel-mode', !!duel || !!coop);
+  document.body.classList.toggle('coop-mode', !!coop);
   $('#hud-duel').classList.toggle('hidden', !duel);
   if (duel && !(duel.live && duel.t0)) resetDuelClock();
   setHudLevel();
@@ -177,6 +181,7 @@ function startLevel(n) {
   writeSave(save);
   hintShown = false;
   updateProgress();
+  if (coop) { setupCoopLevel(); return; }
   if (duel?.live) return;
   showIntros(n);
 }
@@ -185,7 +190,9 @@ function setHudLevel() {
   const d = difficulty(levelNo);
   const el = $('#hud-level');
   el.className = 'hud-level ' + d;
-  el.innerHTML = duel
+  el.innerHTML = coop
+    ? `<span class="duel-tag coop">${t('coopHud')}</span>${t('level')} ${levelNo}`
+    : duel
     ? `<span class="duel-tag">${t('duelHud')}</span>${t('level')} ${levelNo}`
     : `${d === 'normal' ? '' : `<span class="lv-diff ${d}"></span>`}${t('level')} ${levelNo}`;
   el.title = d === 'normal' ? '' : t(d);
@@ -270,7 +277,7 @@ function measureInsets() {
   const b = $('#boosters').getBoundingClientRect();
   if (isLand()) {
     const sa = safeArea();
-    const right = duel ? sa.r + 6 : Math.max(0, window.innerWidth - b.left);
+    const right = duel || coop ? sa.r + 6 : Math.max(0, window.innerWidth - b.left);
     view.setInsets(hud.bottom, sa.b + 4, sa.l + 4, right);
   } else {
     view.setInsets(hud.bottom, appH - b.top);
@@ -284,12 +291,14 @@ function updateCoins() {
 
 function canAct() {
   if (duel?.live && (!live || live.countdown || live.over)) return false;
+  if (coop && (!live || coop.over)) return false;
   return game && game.status === 'playing' && !modalOpen() && !pending;
 }
 
 function handleTap(id) {
   if (!canAct()) return;
   unlockAudio();
+  if (coop) { coopTap(id); return; }
   if (selecting === 'crane') {
     useCrane(id);
     return;
@@ -313,6 +322,11 @@ function handleTap(id) {
     refreshBoosters();
     return;
   }
+  tapFeedback(id, res);
+}
+
+// Rückmeldung, wenn ein LKW nicht losfahren kann
+function tapFeedback(id, res) {
   if (res.reason === 'blocked') {
     view.nudge(id, res.blocker, true);
     sfx.blocked();
@@ -332,7 +346,7 @@ function handleTap(id) {
 const GUIDE_LEVELS = 2;
 function updateGuide() {
   view.guideId = null;
-  if (!game || levelNo > GUIDE_LEVELS || game.status !== 'playing') return;
+  if (!game || coop || levelNo > GUIDE_LEVELS || game.status !== 'playing') return;
   if (save.levels[levelNo]?.won) return;
   const sol = LEVELS[levelNo - 1].sol || [];
   for (const id of sol) {
@@ -364,6 +378,7 @@ function levelRecord(n) {
 function handleWon() {
   if (!game) return;
   setSelecting(null);
+  if (coop) { coopEnd(true); return; }
   if (duel) { duelWon(); return; }
   const rec = levelRecord(levelNo);
   const firstWin = !rec.won;
@@ -426,6 +441,7 @@ function countUp(el, from, to, ms, fmt = (v) => String(v)) {
 function handleLost(reason) {
   if (!game) return;
   setSelecting(null);
+  if (coop) { coopEnd(false); return; }
   if (duel) { duelLost(); return; }
   levelRecord(levelNo).fails++;
   save.stats.lost++;
@@ -487,6 +503,12 @@ function continueWithRamp(def, free) {
 }
 
 function restartLevel() {
+  // Koop: Neustart nur gemeinsam, der Gastgeber startet für beide neu
+  if (coop && live) {
+    hideModal();
+    if (live.host) coopStart(levelNo); else live.link.send({ type: 'resync' });
+    return;
+  }
   if (game && game.moves > 0 && game.status === 'playing' && !duel) {
     levelRecord(levelNo).fails++;
     writeSave(save);
@@ -1023,11 +1045,12 @@ function pickDuelLevel() {
 function showDuelMenu() {
   askNick(() => {
     showDialog({
-      title: t('duelTitle'),
+      title: t('duel'),
       cls: 'duel',
-      html: `<div class="duel-art"><svg viewBox="0 0 48 48"><use href="#i-duel"/></svg></div><p>${t('liveIntro')}</p>`,
+      html: `<div class="duel-art"><svg viewBox="0 0 48 48"><use href="#i-duel"/></svg></div><p>${t('liveIntro')}</p><p class="duel-rules">${t('coopIntro')}</p>`,
       actions: [
-        { label: t('liveHost'), cls: 'primary pulse', fn: liveHost },
+        { label: t('liveHost'), cls: 'primary pulse', fn: () => liveHost('duel') },
+        { label: t('coopHost'), cls: 'primary', fn: () => liveHost('coop') },
         { label: t('liveJoin'), fn: () => askLiveCode() },
         { label: t('timeDuel'), fn: showTimeDuel },
         { label: t('back'), cls: 'quiet', fn: hideModal },
@@ -1178,6 +1201,7 @@ function liveUrl(code) {
 }
 
 function endLive() {
+  endCoop();
   if (!live) return;
   const l = live;
   live = null;
@@ -1187,9 +1211,9 @@ function endLive() {
   l.link?.close();
 }
 
-function newLive(host, code) {
+function newLive(host, code, mode = 'duel') {
   endLive();
-  live = { host, code, link: null, opp: null, round: 0, ready: {}, myTime: null, oppTime: null, oppProg: null, over: false, countdown: false };
+  live = { host, code, mode, link: null, opp: null, round: 0, ready: {}, myTime: null, oppTime: null, oppProg: null, over: false, countdown: false };
   const me = live;
   me.link = new LiveLink({
     onOpen: () => { if (live === me) me.link.send({ type: 'hello', n: save.nick, max: save.maxLevel, v: VERSION }); },
@@ -1199,11 +1223,11 @@ function newLive(host, code) {
   return me;
 }
 
-function liveHost() {
+function liveHost(mode = 'duel') {
   askNick(async () => {
     let me = null;
     for (let tries = 0; tries < 3; tries++) {
-      me = newLive(true, newCode());
+      me = newLive(true, newCode(), mode);
       showLiveRoom();
       try { await me.link.host(me.code); break; }
       catch (e) {
@@ -1221,7 +1245,7 @@ function showLiveRoom() {
   if (!live) return;
   const code = live.code;
   showDialog({
-    title: t('liveTitle'),
+    title: live.mode === 'coop' ? t('coopTitle') : t('liveTitle'),
     cls: 'duel live',
     html: `<p>${t('liveCodeText')}</p><div class="live-code">${code.split('').map((c) => `<span>${c}</span>`).join('')}</div>`
       + `<p class="live-status"><i class="live-dot"></i>${live.opp ? fill(t('liveConnected'), { n: oppName() }) : live.waiting ? t('liveWaiting') : t('liveConnecting')}</p>`,
@@ -1282,7 +1306,7 @@ function onLiveMsg(m) {
   switch (m.type) {
     case 'hello': {
       live.opp = { n: cleanNick(m.n) || '???', max: Math.max(1, Math.min(LEVELS.length, m.max | 0 || 1)) };
-      if (live.host) { showLiveRoom(); setTimeout(() => { if (live && live.host && !live.round) liveStartRound(); }, 900); }
+      if (live.host) { showLiveRoom(); setTimeout(() => { if (live && live.host && !live.round) (live.mode === 'coop' ? coopStart() : liveStartRound()); }, 900); }
       else {
         const st = $('#modal-panel .live-status');
         if (st) st.innerHTML = `<i class="live-dot on"></i>${fill(t('liveConnected'), { n: oppName() })}`;
@@ -1290,7 +1314,22 @@ function onLiveMsg(m) {
       break;
     }
     case 'start':
-      if (!live.host && Number.isInteger(m.level) && m.level >= 1 && m.level <= LEVELS.length) beginLiveRound(m.level, m.round | 0);
+      if (!live.host && Number.isInteger(m.level) && m.level >= 1 && m.level <= LEVELS.length) {
+        if (m.mode === 'coop') beginCoopRound(m.level, m.round | 0);
+        else beginLiveRound(m.level, m.round | 0);
+      }
+      break;
+    case 'tap': // Gast möchte einen LKW losschicken (nur der Gastgeber entscheidet)
+      if (live.host && coop && m.round === coop.round && Number.isInteger(m.id)) coopApply(m.id, 1);
+      break;
+    case 'mv': // Gastgeber hat einen Zug ausgeführt
+      if (!live.host && coop && m.round === coop.round && Number.isInteger(m.id)) coopRemoteMove(m.id);
+      break;
+    case 'nack':
+      if (!live.host && coop && m.round === coop.round && Number.isInteger(m.id)) tapFeedback(m.id, { reason: String(m.reason), blocker: m.blocker, key: m.key });
+      break;
+    case 'resync':
+      if (live.host && coop) coopStart(levelNo);
       break;
     case 'prog': {
       const was = live.oppProg;
@@ -1453,7 +1492,8 @@ function liveGone(reason) {
   if (!live) return;
   const name = oppName();
   const code = live.code;
-  const inGame = !!(duel?.live && game);
+  const inGame = !!((duel?.live || coop) && game);
+  if (coop) { coop.over = true; endCoop(); }
   const l = live;
   live = null;
   clearTimeout(l.cdTimer);
@@ -1469,4 +1509,158 @@ function liveGone(reason) {
     : [{ label: t('menu'), cls: 'primary', fn: showMenu }];
   if (inGame || reason !== 'left' || modalOpen()) showDialog({ title: t('liveGone'), cls: 'lose', html: `<p>${text}</p>`, actions });
   else toast(text, 2500);
+}
+
+// ---------- Koop (ab v0.7.0) ----------
+// Zwei Spieler, ein Hof: Der Hof wird in eine linke (Gastgeber) und eine rechte
+// Hälfte (Gast) geteilt, jeder tippt nur seine LKWs an. Paletten, Rampen und
+// Buchten teilen sich beide. Der Gastgeber führt alle Züge aus und schickt sie in
+// derselben Reihenfolge an den Gast – so bleiben beide Spiele exakt gleich.
+const COOP_REWARD = 40;
+const COOP_COLORS = ['#1f6fe8', '#ff8a00'];
+
+function endCoop() {
+  if (!coop) return;
+  coop = null;
+  view.coop = null;
+  document.body.classList.remove('coop-mode');
+  document.body.classList.remove('duel-mode');
+  $('#hud-duel').classList.add('hidden');
+}
+
+// Mittelpunkt eines LKWs im Raster (wie truckPose in der Ansicht)
+function truckCenter(tr) {
+  if (tr.dir == null) return [tr.x, tr.y];
+  const [dx, dy] = DIRS[tr.dir];
+  return [tr.x + 0.5 - (dx * (tr.len - 1)) / 2, tr.y + 0.5 - (dy * (tr.len - 1)) / 2];
+}
+
+// Aufteilung: nach x sortiert, linke Hälfte für den Gastgeber (auf beiden Geräten gleich)
+function coopSplit(g) {
+  const items = g.trucks.map((tr) => {
+    const [x, y] = truckCenter(tr);
+    return { id: tr.id, x, y };
+  });
+  items.sort((a, b) => a.x - b.x || a.y - b.y || a.id - b.id);
+  const owner = new Int8Array(g.trucks.length);
+  const half = Math.ceil(items.length / 2);
+  items.forEach((it, i) => { owner[it.id] = i < half ? 0 : 1; });
+  const split = items.length > 1 ? (items[half - 1].x + items[Math.min(half, items.length - 1)].x) / 2 : g.w / 2;
+  return { owner, split };
+}
+
+function coopStart(level) {
+  if (!live || !live.host) return;
+  const lv = level || Math.max(1, Math.min(save.maxLevel, live.opp?.max || 1, LEVELS.length));
+  const round = live.round + 1;
+  live.link.send({ type: 'start', mode: 'coop', level: lv, round });
+  beginCoopRound(lv, round);
+}
+
+function beginCoopRound(level, round) {
+  live.round = round;
+  live.over = false;
+  endDuelOnly();
+  coop = { me: live.host ? 0 : 1, round, owner: null, over: false };
+  hideModal();
+  goFullscreen();
+  startLevel(level);
+}
+
+// Duell-Zustand löschen, ohne die Verbindung zu schließen
+function endDuelOnly() {
+  if (duel) clearInterval(duel.timer);
+  duel = null;
+  $('#hud-duel').classList.add('hidden');
+}
+
+function setupCoopLevel() {
+  const { owner, split } = coopSplit(game);
+  coop.owner = owner;
+  coop.over = false;
+  const partner = live?.opp?.n || '?';
+  view.coop = { owner, split, me: coop.me, color: COOP_COLORS[1 - coop.me], initial: partner.slice(0, 1).toUpperCase() };
+  $('#boosters').classList.add('hidden');
+  $('#hud-duel').classList.remove('hidden');
+  const el = $('#hud-opp');
+  el.classList.remove('hidden');
+  el.innerHTML = `<b>${t('coopWith')} ${oppName()}</b>`;
+  toast(t(coop.me === 0 ? 'coopLeft' : 'coopRight'), 3200);
+}
+
+function coopTap(id) {
+  if (!coop.owner || coop.owner[id] !== coop.me) {
+    view.nudge(id, -1);
+    sfx.blocked();
+    toast(fill(t('coopNotYours'), { n: oppName() }), 1600);
+    return;
+  }
+  if (live.host) coopApply(id, 0);
+  else live.link.send({ type: 'tap', id, round: coop.round });
+}
+
+// Gastgeber: Zug prüfen und ausführen (who: 0 = selbst, 1 = Gast)
+function coopApply(id, who) {
+  if (!game || game.status !== 'playing' || coop.over) return;
+  if (coop.owner[id] !== who) return;
+  const tr = game.trucks[id];
+  let res;
+  if (!view.canDispatch() && tr && game.canExit(tr)) res = { ok: false, reason: 'noRamp' };
+  else res = game.tap(id);
+  if (!res.ok) {
+    if (who === 0) tapFeedback(id, res);
+    else live.link.send({ type: 'nack', id, round: coop.round, reason: res.reason, blocker: res.blocker, key: res.key });
+    return;
+  }
+  live.link.send({ type: 'mv', id, round: coop.round });
+  coopPlay(res);
+}
+
+// Gast: Zug des Gastgebers nachspielen
+function coopRemoteMove(id) {
+  if (!game || game.status !== 'playing') return;
+  const res = game.tap(id);
+  if (!res.ok) { live.link.send({ type: 'resync' }); return; }
+  coopPlay(res);
+}
+
+function coopPlay(res) {
+  hideBanner();
+  sfx.tap();
+  view.play(res.events);
+  updateWarn();
+}
+
+function coopEnd(won) {
+  if (!coop || coop.over) return;
+  coop.over = true;
+  $('#warn').classList.add('hidden');
+  let reward = 0;
+  if (won) {
+    reward = COOP_REWARD;
+    save.coins += reward;
+    save.stats.won++;
+    writeSave(save);
+    updateCoins();
+    sfx.win();
+    view.celebrate?.();
+    updateProgress();
+  } else {
+    sfx.lose();
+    vibrate(60);
+  }
+  const host = coop.me === 0;
+  const actions = host
+    ? [
+      { label: won ? t('next') : t('liveRestart'), cls: 'primary pulse', fn: () => coopStart(won ? Math.min(levelNo + 1, LEVELS.length) : levelNo) },
+      { label: t('menu'), cls: 'quiet', fn: showMenu },
+    ]
+    : [{ label: t('menu'), cls: 'quiet', fn: showMenu }];
+  showDialog({
+    title: won ? t('coopWin') : t('lost'),
+    cls: won ? 'win duel' : 'lose',
+    html: (won ? `<img class="result-art" src="assets/win.png" alt=""><p>${fill(t('coopWinText'), { n: oppName() })}</p><div class="reward"><span class="coin"></span><span class="reward-num">+${reward}</span></div>` : `<p>${t('coopLostText')}</p>`)
+      + (host ? '' : `<p class="live-status"><i class="live-dot on"></i>${fill(t('coopWait'), { n: oppName() })}</p>`),
+    actions,
+  });
 }

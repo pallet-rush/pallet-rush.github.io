@@ -1,4 +1,6 @@
-// Parameterplan für den Level-Generator (300 Level, 30 Welten).
+// Parameterplan für den Level-Generator (300 Level in 30 Abschnitten zu 10; im Spiel 15 Welten à 20).
+// v0.7.0: alle Level ab 11 schwerer (mehr LKWs, schwächere Gewinnquote des simulierten Spielers), Level 4 und 8
+// jedes Abschnitts sind lange Level (siehe makeLong).
 // Wird nur von tools/levelgen.html genutzt, nicht vom Spiel selbst.
 // Bedeutung der Parameter: siehe js/core/generator.js.
 //
@@ -58,6 +60,18 @@ const WORLD1 = [
   { shape: 'ring', angle: 0, R: 5.2, density: 0.7, colors: 5, mix: { S: 3, M: 2, L: 1 }, chunk: [2, 5], stay: 0.4, deep: 0.4, target: [0.12, 0.35], slack: 0 },
 ].map((p, i) => ({ ...base, ...p, ...W1_HARD[i], human: W1_HUMAN[i], humanLo: W1_HUMAN_LO[i], R: Math.min(R_MAX, p.R) }));
 
+// Ab v0.7.0: Lange Level (je Zehnerblock Level 4 und 8): mehr und größere LKWs
+// (mehr Paletten) und – sobald Tore bekannt sind – ein Tor mit 4–6 wartenden LKWs.
+const isLong = (j) => j === 3 || j === 7;
+function makeLong(p, gateOk, trailerOk) {
+  p.long = true;
+  p.mix = { ...p.mix, L: (p.mix.L || 1) + 0.8 };
+  if (trailerOk) p.mix.T = (p.mix.T || 0) + 0.8;
+  p.minTrucks += 2;
+  if (p.gates) p.gateQ = [Math.max(p.gateQ[0], 4), Math.max(p.gateQ[1], 6)];
+  else if (gateOk && !(p.barriers >= 2)) { p.gates = 1; p.gateQ = [4, 6]; }
+}
+
 // Welten 2–10: Parameter folgen einer Kurve, plus die Mechanik der Welt.
 function worldLevel(w, j) {
   const n = 10 + w * 10 + j; // Index 0-basiert
@@ -71,7 +85,7 @@ function worldLevel(w, j) {
     ...base,
     minCell,
     // Mindestens so viele LKWs, damit späte Level nicht dünn wirken
-    minTrucks: intro ? 8 + w : 9 + w + Math.floor(k / 4),
+    minTrucks: intro ? 9 + w : 10 + w + Math.floor(k / 4),
     shape: SHAPE_CYCLE[(n * 5) % SHAPE_CYCLE.length],
     angle: 0,
     // Kreuz und quer: Anteil schräg gestellter LKWs steigt Welt für Welt
@@ -90,11 +104,11 @@ function worldLevel(w, j) {
     traps: intro ? 2 : Math.min(7, 2 + Math.floor(w / 2) + (j % 3 === 2 ? 1 : 0) + (j === 9 ? 3 : 0)),
     // Simulierter Spieler (2 Züge Vorausschau) darf höchstens so oft gewinnen
     human: intro
-      ? Math.max(0.3, 0.6 - w * 0.03)
+      ? Math.max(0.25, 0.5 - w * 0.03)
       : j === 9
-        ? 0.1
-        : Math.max(0.12, 0.45 - w * 0.03 - k * 0.015),
-    humanLo: intro ? 0.15 : j === 9 ? 0 : Math.max(0, 0.12 - w * 0.015),
+        ? 0.07
+        : Math.max(0.08, 0.36 - w * 0.03 - k * 0.015),
+    humanLo: intro ? 0.1 : j === 9 ? 0 : Math.max(0, 0.08 - w * 0.015),
     target: intro
       ? [0.4, 0.75]
       : j === 9
@@ -117,6 +131,7 @@ function worldLevel(w, j) {
   // Die Welt-Mechanik muss in jedem Level der Welt wirklich vorkommen.
   const req = [null, 'hidden', 'gate', 'barrier', 'rush', 'trailer', 'chain', 'covered', 'turntable', null][w];
   if (req) p.require = req;
+  if (isLong(j)) makeLong(p, w >= 2, w >= 5);
   return p;
 }
 
@@ -152,7 +167,7 @@ function lateLevel(w, j) {
   const p = {
     ...base,
     minCell,
-    minTrucks: intro || rest ? 12 + tier : 14 + tier + Math.floor(k / 3),
+    minTrucks: intro || rest ? 13 + tier : 15 + tier + Math.floor(k / 3),
     shape: SHAPE_CYCLE[(n * 5) % SHAPE_CYCLE.length],
     angle: 0,
     chaos: Math.min(0.85, 0.55 + k * 0.03 + tier * 0.05),
@@ -166,8 +181,8 @@ function lateLevel(w, j) {
     deep: Math.min(0.75, 0.35 + lvl * 0.04),
     slack: 0,
     traps: intro || rest ? 2 + tier : Math.min(7, 3 + tier + Math.floor(k / 3) + (boss ? 2 : 0)),
-    human: intro || rest ? 0.45 - tier * 0.05 : boss ? 0.1 : Math.max(0.1, 0.35 - k * 0.025 - tier * 0.04),
-    humanLo: intro || rest ? 0.12 : boss ? 0 : 0.03,
+    human: intro || rest ? 0.38 - tier * 0.05 : boss ? 0.07 : Math.max(0.07, 0.3 - k * 0.025 - tier * 0.04),
+    humanLo: intro || rest ? 0.08 : boss ? 0 : 0.02,
     target: [0.05, 0.6],
   };
   if (p.shape === 'triangle') p.shape = 'blob';
@@ -188,6 +203,7 @@ function lateLevel(w, j) {
     const [c] = COMBOS[(w - 9) % COMBOS.length].filter((m) => m !== a && m !== b);
     if (c) addMech(p, c, false);
   }
+  if (isLong(j)) makeLong(p, !p.require.includes('barrier'), true);
   return p;
 }
 

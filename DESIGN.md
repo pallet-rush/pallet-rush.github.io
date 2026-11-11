@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 11.11.2026 · Version 0.6.6
+Stand: 11.11.2026 · Version 0.7.0
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -90,6 +90,11 @@ jedes Level garantiert prüfen kann.
 | 13 | 241–260 | Sternenwüste | Sand, Nacht |
 | 14 | 261–280 | Neonnacht | Neon, Nacht |
 | 15 | 281–300 | Schatzkammer | Gold, Nacht |
+
+Ab v0.7.0 sind die Level ab 11 schwerer: mehr LKWs, der simulierte Spieler darf
+seltener gewinnen (Boss-Level höchstens 7 %), und Level 4 und 8 jedes Zehner-Abschnitts
+sind lange Level: mehr und größere LKWs (mehr Paletten), sobald Tore bekannt sind ein
+Tor mit 4–6 wartenden LKWs. Neu erzeugt in Etappen (zuerst 115 Level, der Rest folgt).
 
 ### Abschnitte 1–10 (Level 1–100)
 
@@ -234,6 +239,24 @@ mit Münzen kaufen.
 - Verlässt der Gegner das Duell oder bricht die Verbindung ab, gibt es eine Meldung.
   Keine Boni, kein Einfluss auf Level-Fortschritt oder Sterne.
 
+## 7e. Koop zu zweit (ab v0.7.0)
+
+- Im Menü „Mehrspieler“ → „Koop-Raum erstellen“; der zweite Spieler tritt wie beim
+  Live-Duell mit dem 4-stelligen Code oder Link bei (gleiche Verbindung, WebRTC).
+- Beide spielen dasselbe Level gemeinsam. Der Hof wird geteilt: Die LKWs werden nach
+  ihrer Lage sortiert, die linke Hälfte gehört dem Gastgeber, die rechte dem Gast
+  (bei ungerader Zahl einer mehr für den Gastgeber). Eine gestrichelte Linie trennt
+  die Hälften, die Hälfte des Partners ist leicht abgedunkelt, seine LKWs tragen ein
+  Abzeichen mit seinem Anfangsbuchstaben. Paletten, Rampen und Buchten sind gemeinsam.
+- Der Gastgeber führt alle Züge aus: Tippt der Gast, schickt er nur den Wunsch; der
+  Gastgeber prüft ihn und sendet den Zug an beide in derselben Reihenfolge. So bleiben
+  beide Spiele exakt gleich (Spiellogik ist deterministisch). Kann ein LKW nicht los,
+  bekommt der Gast die gewohnte Rückmeldung. Weichen die Spiele doch ab, startet der
+  Gastgeber das Level für beide neu.
+- Keine Boni. Gewinnen bringt beiden 40 Münzen; der Gastgeber wählt „Weiter“ oder
+  „Nochmal“, der Gast wartet. Neustart über das Menü ebenfalls nur gemeinsam.
+- Startlevel: das höchste Level, das beide freigeschaltet haben.
+
 ## 8. Fairness-Garantien (Level-Pipeline)
 
 1. **Generator** stanzt eine Stau-Form (Kreis, Herz, Stern, Raute, Ring, Kreuz,
@@ -314,6 +337,15 @@ mit Münzen kaufen.
   Darstellung übernimmt die Plätze aus der Spiellogik; ein neuer Block rückt erst
   nach, wenn die Paletten des vorigen sichtbar weg sind. 297 der 300 Level waren mit
   ihrer Lösung weiter lösbar, nur 48, 86 und 101 wurden neu erzeugt.
+- Fabrik und LKWs je Welt (ab v0.7.0, `hall`/`belt`/`truck` in `js/render/themes.js`):
+  Die Halle hat je Welt eigene Dach-, Attika-, Wand- und Schildfarben, eine eigene
+  Wand (Ziegel in der Fabrik, Holz im Schnee und Wald, Glas in Neon und Flughafen)
+  und Dach-Deko (Schnee mit Eiszapfen, Sandwehen, Neonkanten, Moos, Schilf,
+  Schornsteine mit Rauch, Container, Radarkuppeln, Goldglitzer). Das Förderband hat
+  die Weltfarbe. LKWs: Schnee auf dem Dach (Schneewelt), Staub bzw. Schlamm (Wüste,
+  Wald, Fabrik), Zierstreifen und Felgen in Weltfarben, Rundumleuchte (Flughafen),
+  Unterbodenleuchte (Neon), Scheinwerfer an bei Abend und Nacht. Die Spielfarbe des
+  Aufbaus bleibt immer unverändert.
 - Welt-Optik (ab v0.6.5, `js/render/themes.js`): Jede Welt sieht passend zu ihrem
   Namen aus – Boden, Muster, Betonflächen, Beete und Pflanzen: 1 Stadt (Standard),
   2 Hafen (Wasser mit Wellen), 3 Wüste (Sand, Kakteen), 4 Schnee (verschneite

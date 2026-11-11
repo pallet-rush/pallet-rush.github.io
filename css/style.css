@@ -1647,6 +1647,8 @@ html { background: #151c3a; }
 .menu-row { gap: 10px; }
 .menu-row .tile-btn { font-size: 14px; padding-left: 4px; padding-right: 4px; }
 body.duel-mode #boosters { visibility: hidden; }
+body.coop-mode .hud-duel .hd-me { display: none; }
+.duel-tag.coop { background: #1f6fe8; }
 .duel-tag {
   display: inline-block; margin-right: 6px; padding: 1px 8px 2px; border-radius: 999px;
   background: #ff6a2b; font-size: 12px; vertical-align: 2px; letter-spacing: 0.4px; text-transform: uppercase;

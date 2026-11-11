@@ -668,6 +668,7 @@ export function drawHallFacade(ctx, x, y, w, h, o = {}) {
   const capH = o.capH ?? Math.max(3, h * 0.07);
   const wy = y + roofH + capH, wh = y + h - wy;
   const R = rng(4711);
+  const H = THEME.hall || {};
   ctx.save();
   // Bodenschatten vor der Wand
   const sg = ctx.createLinearGradient(0, y + h, 0, y + h + 10);
@@ -678,8 +679,8 @@ export function drawHallFacade(ctx, x, y, w, h, o = {}) {
 
   // Dach
   const rg = ctx.createLinearGradient(0, y, 0, y + roofH);
-  rg.addColorStop(0, '#8d99a8');
-  rg.addColorStop(1, '#a9b4c1');
+  rg.addColorStop(0, H.roof?.[0] || '#8d99a8');
+  rg.addColorStop(1, H.roof?.[1] || '#a9b4c1');
   ctx.fillStyle = rg;
   ctx.fillRect(x, y, w, roofH);
   ctx.strokeStyle = 'rgba(255,255,255,0.28)';
@@ -723,10 +724,11 @@ export function drawHallFacade(ctx, x, y, w, h, o = {}) {
     }
     ctx.stroke();
   }
+  if (H.roofFx && roofH >= 8) hallRoofFx(ctx, x, y, w, roofH, H.roofFx, rng(99));
   // Attika (blau mit oranger Kante)
   const cg = ctx.createLinearGradient(0, y + roofH, 0, y + roofH + capH);
-  cg.addColorStop(0, '#4b93ff');
-  cg.addColorStop(1, '#1a5fd6');
+  cg.addColorStop(0, H.cap?.[0] || '#4b93ff');
+  cg.addColorStop(1, H.cap?.[1] || '#1a5fd6');
   ctx.fillStyle = cg;
   ctx.fillRect(x, y + roofH - 1, w, capH + 1);
   ctx.fillStyle = 'rgba(255,255,255,0.45)';
@@ -734,24 +736,56 @@ export function drawHallFacade(ctx, x, y, w, h, o = {}) {
 
   // Wand: Trapezblech
   const wg = ctx.createLinearGradient(0, wy, 0, y + h);
-  wg.addColorStop(0, '#f6f9fd');
-  wg.addColorStop(1, '#dfe7f1');
+  wg.addColorStop(0, H.wall?.[0] || '#f6f9fd');
+  wg.addColorStop(1, H.wall?.[1] || '#dfe7f1');
   ctx.fillStyle = wg;
   ctx.fillRect(x, wy, w, wh);
-  ctx.fillStyle = 'rgba(80,110,150,0.13)';
-  ctx.beginPath();
-  for (let xx = x; xx < x + w; xx += 5) ctx.rect(xx + 3, wy, 1.4, wh);
-  ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.8)';
-  ctx.beginPath();
-  for (let xx = x; xx < x + w; xx += 5) ctx.rect(xx + 2, wy, 0.8, wh);
-  ctx.fill();
+  if (H.wallFx === 'brick') {
+    // Ziegel: Fugen versetzt
+    ctx.fillStyle = 'rgba(255,235,220,0.35)';
+    ctx.beginPath();
+    for (let yy = wy + 3, r = 0; yy < y + h; yy += 3, r++) {
+      ctx.rect(x, yy, w, 0.6);
+      for (let xx = x + (r % 2) * 4; xx < x + w; xx += 8) ctx.rect(xx, yy - 3, 0.6, 3);
+    }
+    ctx.fill();
+  } else if (H.wallFx === 'planks') {
+    // Holzbretter waagerecht
+    ctx.fillStyle = 'rgba(40,20,5,0.28)';
+    ctx.beginPath();
+    for (let yy = wy + 4; yy < y + h; yy += 4) ctx.rect(x, yy, w, 0.8);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,230,190,0.25)';
+    ctx.beginPath();
+    for (let yy = wy + 4.8; yy < y + h; yy += 4) ctx.rect(x, yy, w, 0.6);
+    ctx.fill();
+  } else if (H.wallFx === 'glass') {
+    // Glasfassade: Pfosten und Spiegelung
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    for (let xx = x; xx < x + w; xx += 14) ctx.rect(xx, wy, 1.2, wh);
+    ctx.rect(x, wy + wh * 0.5, w, 0.8);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.beginPath();
+    for (let xx = x; xx < x + w; xx += 42) { ctx.moveTo(xx, y + h); ctx.lineTo(xx + 16, wy); ctx.lineTo(xx + 24, wy); ctx.lineTo(xx + 8, y + h); }
+    ctx.fill();
+  } else {
+    ctx.fillStyle = 'rgba(80,110,150,0.13)';
+    ctx.beginPath();
+    for (let xx = x; xx < x + w; xx += 5) ctx.rect(xx + 3, wy, 1.4, wh);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.beginPath();
+    for (let xx = x; xx < x + w; xx += 5) ctx.rect(xx + 2, wy, 0.8, wh);
+    ctx.fill();
+  }
   // Farbbänder
-  ctx.fillStyle = '#ff8a00';
+  ctx.fillStyle = H.bands?.[0] || '#ff8a00';
   ctx.fillRect(x, wy, w, Math.max(1.5, wh * 0.05));
-  ctx.fillStyle = '#1f6fe8';
+  ctx.fillStyle = H.bands?.[1] || '#1f6fe8';
   ctx.fillRect(x, y + h - wh * 0.16, w, wh * 0.1);
-  ctx.fillStyle = '#ffcc00';
+  ctx.fillStyle = H.bands?.[2] || '#ffcc00';
   ctx.fillRect(x, y + h - wh * 0.06, w, wh * 0.025);
   // Sockel
   ctx.fillStyle = '#b7bec8';
@@ -883,10 +917,10 @@ export function drawHallFacade(ctx, x, y, w, h, o = {}) {
     const sh = Math.max(10, wh * 0.46), sw2 = signW;
     const sx = signX - sw2 / 2, sy = wy + wh * 0.12;
     fillRR(ctx, sx + 1.5, sy + 2.5, sw2, sh, 4, 'rgba(20,40,80,0.25)');
-    fillRR(ctx, sx, sy, sw2, sh, 4, '#0f4fc4');
+    fillRR(ctx, sx, sy, sw2, sh, 4, H.sign?.[0] || '#0f4fc4');
     const pg = ctx.createLinearGradient(0, sy, 0, sy + sh);
-    pg.addColorStop(0, '#3d8bff');
-    pg.addColorStop(1, '#1559d6');
+    pg.addColorStop(0, H.sign?.[1] || '#3d8bff');
+    pg.addColorStop(1, H.sign?.[2] || '#1559d6');
     fillRR(ctx, sx + 1.5, sy + 1.5, sw2 - 3, sh - 3, 3, pg);
     ctx.fillStyle = 'rgba(255,255,255,0.18)';
     ctx.fillRect(sx + 3, sy + 2, sw2 - 6, sh * 0.35);
@@ -905,9 +939,81 @@ export function drawHallFacade(ctx, x, y, w, h, o = {}) {
     const maxW = sw2 - ls - sh * 0.6;
     const mw = ctx.measureText(text).width;
     if (mw > maxW) px *= maxW / mw;
-    outlinedText(ctx, text, tx, sy + sh / 2 + px * 0.04, px, '#ffffff', '#0a3a99', px * 0.18);
+    outlinedText(ctx, text, tx, sy + sh / 2 + px * 0.04, px, '#ffffff', H.sign?.[0] || '#0a3a99', px * 0.18);
     ctx.fillStyle = '#ffcc00';
     ctx.fillRect(sx + 3, sy + sh - 3.5, sw2 - 6, 1.5);
+  }
+  ctx.restore();
+}
+
+// Dach-Deko der Halle je Welt (über Oberlichtern, unter der Attika)
+function hallRoofFx(ctx, x, y, w, rh, fx, R) {
+  ctx.save();
+  if (fx === 'snow') {
+    // Schneedecke mit Wehen, Eiszapfen an der Kante
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillRect(x, y, w, rh);
+    ctx.fillStyle = 'rgba(170,200,235,0.45)';
+    for (let xx = x; xx < x + w; xx += 22 + R() * 20) {
+      ctx.beginPath(); ctx.ellipse(xx, y + rh * (0.4 + R() * 0.4), 10 + R() * 8, rh * 0.12, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = '#e6f3ff';
+    for (let xx = x + 3; xx < x + w; xx += 5 + R() * 6) {
+      const l = 2 + R() * 4;
+      ctx.beginPath(); ctx.moveTo(xx - 1.2, y + rh); ctx.lineTo(xx + 1.2, y + rh); ctx.lineTo(xx, y + rh + l); ctx.fill();
+    }
+  } else if (fx === 'sand') {
+    ctx.fillStyle = 'rgba(214,170,105,0.55)';
+    for (let xx = x; xx < x + w; xx += 30 + R() * 30) {
+      ctx.beginPath(); ctx.ellipse(xx, y + rh * 0.85, 22 + R() * 14, rh * 0.22, 0, Math.PI, 0); ctx.fill();
+    }
+  } else if (fx === 'neon') {
+    ctx.globalCompositeOperation = 'lighter';
+    for (const [c, yy] of [['#22e0ff', y + rh - 2], ['#ff2fd0', y + 2]]) {
+      ctx.strokeStyle = c; ctx.lineWidth = 3; ctx.globalAlpha = 0.35;
+      ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x + w, yy); ctx.stroke();
+      ctx.lineWidth = 1.2; ctx.globalAlpha = 1;
+      ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x + w, yy); ctx.stroke();
+    }
+  } else if (fx === 'moss') {
+    for (let i = 0; i < w / 18; i++) {
+      const mx = x + R() * w, my = y + R() * rh;
+      ctx.fillStyle = R() < 0.5 ? 'rgba(70,120,50,0.6)' : 'rgba(110,160,70,0.55)';
+      ctx.beginPath(); ctx.ellipse(mx, my, 6 + R() * 8, 2 + R() * 3, 0, 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (fx === 'thatch') {
+    ctx.strokeStyle = 'rgba(140,100,40,0.45)'; ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    for (let xx = x; xx < x + w; xx += 3) { ctx.moveTo(xx, y); ctx.lineTo(xx + 2, y + rh); }
+    ctx.stroke();
+  } else if (fx === 'gold') {
+    for (let i = 0; i < w / 25; i++) drawSparkle(ctx, x + R() * w, y + R() * rh, 2 + R() * 2.5, R() * 6);
+  } else if (fx === 'chimney') {
+    // Schornsteine mit Rauch
+    for (let xx = x + w * 0.12; xx < x + w; xx += w * 0.3) {
+      const cw = 9, cy = y + rh * 0.25;
+      box(ctx, xx, cy, cw, rh * 0.5, 2, '#a5452f', '#7a2f1f', 1);
+      ctx.fillStyle = '#2b2f35'; ctx.fillRect(xx + 1, cy + 0.5, cw - 2, 2);
+      for (let k = 0; k < 3; k++) {
+        ctx.fillStyle = `rgba(230,230,235,${0.55 - k * 0.15})`;
+        ctx.beginPath(); ctx.arc(xx + cw / 2 + k * 6, cy - 2 - k * 3, 3 + k * 1.5, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  } else if (fx === 'containers') {
+    const cols = ['#e5482f', '#1f6fe8', '#14a85a', '#ffb300'];
+    for (let xx = x + 10, i = 0; xx + 26 < x + w; xx += 34 + R() * 30, i++) {
+      const ch = Math.min(9, rh * 0.45);
+      box(ctx, xx, y + rh * 0.3, 26, ch, 2, cols[i % 4], shade(cols[i % 4], -0.3), 1);
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      for (let k = 3; k < 26; k += 3) ctx.fillRect(xx + k, y + rh * 0.3, 0.6, ch);
+    }
+  } else if (fx === 'radar') {
+    for (let xx = x + w * 0.2; xx < x + w; xx += w * 0.45) {
+      const cy = y + rh * 0.5;
+      ctx.fillStyle = '#e9eef3'; ctx.beginPath(); ctx.arc(xx, cy, Math.min(7, rh * 0.32), 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#7d8a99'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = '#e52b2b'; ctx.beginPath(); ctx.arc(xx, cy, 1.5, 0, Math.PI * 2); ctx.fill();
+    }
   }
   ctx.restore();
 }

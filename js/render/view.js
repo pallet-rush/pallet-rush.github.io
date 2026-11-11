@@ -19,9 +19,9 @@
 import { COLORS, DIRS, SIZES, COVER, LOT, WAIT, GONE } from '../core/constants.js';
 import { GATE_W, GATE_BACK, BODY_W, bodyLen, LOT_K } from '../core/geom.js';
 import { t as tr } from '../i18n.js';
-import { drawVehicle, drawPallet, vehicleSlot, vehicleLength, vehicleWidth } from './vehicles.js';
+import { drawVehicle, drawPallet, vehicleSlot, vehicleLength, vehicleWidth, setVehicleStyle } from './vehicles.js';
 import * as P from './props.js';
-import { worldTheme } from './themes.js';
+import { worldTheme, truckStyle } from './themes.js';
 import { sfx, vibrate } from '../audio.js';
 
 const FW = 390; // Breite der Fabrik (Hochformat: ganze Szene)
@@ -1285,6 +1285,8 @@ export class GameView {
     // Welt-Thema (Boden, Pflanzen, Tageszeit) nach der Level-Nummer
     const theme = worldTheme(this.game?.level?.id);
     P.setTheme(theme);
+    setVehicleStyle(truckStyle(theme));
+    this._belt = theme.belt || '#ff8a00';
     this._lamps = [];
     ctx.setTransform(d, 0, 0, d, 0, 0);
     // Rasen über die ganze Fläche (auch Ränder)
@@ -1326,7 +1328,7 @@ export class GameView {
     // Deko neben dem Förderband (nach der Halle: Baumkronen dürfen vor der Wand stehen)
     this.drawDecor(ctx);
     // Förderband: statischer Teil
-    for (const p of this.beltPaths()) P.drawConveyor(ctx, p, BELT_W, 0, { layer: 'base', color: '#ff8a00' });
+    for (const p of this.beltPaths()) P.drawConveyor(ctx, p, BELT_W, 0, { layer: 'base', color: this._belt });
     // Rampenwand und Buchten
     P.drawDockWall(ctx, 14, L.wallY, FW - 28, 10, { bumpersAt: L.bays.flatMap((x) => [x - 16, x + 16]) });
     L.bays.forEach((x, i) => P.drawDockBay(ctx, x, L.bayTop, L.slotW, L.bayH, { index: i, extra: i >= 4, floor: true }));
@@ -1525,7 +1527,7 @@ export class GameView {
   drawBelts(ctx, now) {
     const paths = this.beltPaths();
     const ph = this.beltPhase;
-    for (const p of paths) P.drawConveyor(ctx, p, BELT_W, ph, { layer: 'belt', color: '#ff8a00' });
+    for (const p of paths) P.drawConveyor(ctx, p, BELT_W, ph, { layer: 'belt', color: this._belt || '#ff8a00' });
     const L = this.L;
     // Rutschen der drei Ausläufe: treten radial durch eine Öffnung in der Bandwand aus
     // und biegen dann senkrecht zur Rollenbahn ab (über dem Band gezeichnet = Öffnung)
@@ -1860,7 +1862,17 @@ export class GameView {
     const lot = this.tvs.filter((v) => v.state === 'lot');
     lot.sort((a, b) => a.y - b.y);
     const selecting = this.select === 'truck';
+    if (this.coop && this.game) this.drawCoopSplit(ctx);
     for (const tv of lot) this.drawTv(ctx, tv, now, true);
+    // Koop: LKWs des Partners tragen sein Abzeichen
+    if (this.coop) {
+      const c = this.coop;
+      for (const tv of lot) {
+        if (c.owner[tv.id] === c.me) continue;
+        const r = Math.max(5, tv.cell * 0.28);
+        P.drawBadge(ctx, tv.x + r * 0.9, tv.y + r * 0.9, r, c.color, c.initial);
+      }
+    }
     // Marker: Eilaufträge, Ketten
     for (const tv of lot) {
       const t = tv.t;
@@ -1877,6 +1889,30 @@ export class GameView {
       }
     }
     void selecting;
+  }
+
+  // Koop: gestrichelte Trennlinie, Hälfte des Partners leicht abgedunkelt
+  drawCoopSplit(ctx) {
+    const g = this.game, c = this.coop;
+    const a = this.gridToScreen(c.split, -0.3), b = this.gridToScreen(c.split, g.h + 0.3);
+    const far = c.me === 0 ? g.w + 0.6 : -0.6;
+    const p = this.gridToScreen(far, g.h + 0.3), q = this.gridToScreen(far, -0.3);
+    ctx.save();
+    // nur innerhalb der Ringstraße
+    const r = this.L.ring;
+    ctx.beginPath(); ctx.rect(r.x + ROAD_W / 2, r.y + ROAD_W / 2, r.w - ROAD_W, r.h - ROAD_W); ctx.clip();
+    ctx.fillStyle = 'rgba(30,40,90,0.13)';
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.closePath(); ctx.fill();
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = 'rgba(30,40,90,0.35)';
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    ctx.setLineDash([8, 7]);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#ffffff';
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
   }
 
   drawTv(ctx, tv, now, inLot = false) {

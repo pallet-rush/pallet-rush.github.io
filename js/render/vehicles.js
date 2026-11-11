@@ -25,6 +25,20 @@ const SIDES = [-1, 1];
 const Q8 = Math.PI / 4;
 const TAU = Math.PI * 2;
 
+// Welt-Stil der Fahrzeuge (ab v0.7.0, gesetzt von der Szene, siehe themes.js):
+//   snow    Schnee auf Fahrerhaus und an den Dachkanten   dust  Staub/Schlamm unten (Farbe)
+//   stripe  Zierstreifen an der Seite (Farbe)             rims  Felgenfarbe
+//   beacon  orange Rundumleuchte auf dem Fahrerhaus       glow  Unterbodenleuchte (Farbe, nicht im Sprite)
+//   lights  Scheinwerfer an (0..1, Abend/Nacht, nicht im Sprite)
+// Die Farbe des Aufbaus bleibt immer die Spielfarbe.
+export const VSTYLE = {};
+let VKEY = '';
+export function setVehicleStyle(st = {}) {
+  for (const k of Object.keys(VSTYLE)) delete VSTYLE[k];
+  Object.assign(VSTYLE, st);
+  VKEY = `|${st.snow ? 1 : 0}${st.dust || ''}${st.stripe || ''}${st.rims || ''}${st.beacon ? 1 : 0}`;
+}
+
 // ---------- Farben ----------
 const RGB = new Map();
 function rgbOf(hex) {
@@ -527,7 +541,7 @@ function drawWheel(ctx, V, w, near) {
   ctx.beginPath(); ctx.arc(0, 0, 0.86, -2.7, -1.0);
   ctx.strokeStyle = 'rgba(255,255,255,0.16)'; ctx.stroke();
   ctx.beginPath(); ctx.arc(0, 0, w.dual ? 0.58 : 0.62, 0, TAU);
-  ctx.fillStyle = '#e3e8ed'; ctx.fill();
+  ctx.fillStyle = VSTYLE.rims || '#e3e8ed'; ctx.fill();
   ctx.lineWidth = 0.09; ctx.strokeStyle = '#97a1ab'; ctx.stroke();
   if (cell >= 16) {
     ctx.beginPath(); ctx.arc(0, 0, w.dual ? 0.42 : 0.44, 0, TAU);
@@ -696,6 +710,7 @@ function drawCab(ctx, V, p, c) {
     // Seitenblinker
     ctx.fillStyle = '#ffa31a';
     rrect(ctx, p.x1 - 0.055, z1 - 0.06, 0.032, 0.02, 0.008); ctx.fill();
+    if (VSTYLE.dust) dustBand(ctx, p.x0, p.x1, z0, z1);
   }
   if (V.sa > 0.06) {
     // Front: Grill, Scheinwerfer
@@ -745,7 +760,42 @@ function drawCab(ctx, V, p, c) {
     ctx.fillStyle = '#ffb726';
     for (const v of [-0.18, 0, 0.18]) { rrect(ctx, f.x1 - 0.035, v - 0.016, 0.022, 0.032, 0.01); ctx.fill(); }
   }
+  if (VSTYLE.snow || VSTYLE.beacon) {
+    const top = p.defl || r;
+    setLocal(ctx, V, top.z1);
+    if (VSTYLE.snow) snowCap(ctx, top.x0 + 0.03, top.x1 - 0.05, top.y0 + 0.03, top.y1 - 0.03);
+    if (VSTYLE.beacon) {
+      const bu = (top.x0 + top.x1) / 2 - 0.02;
+      ctx.fillStyle = '#7a3c00';
+      rrect(ctx, bu - 0.05, -0.05, 0.1, 0.1, 0.03); ctx.fill();
+      ctx.fillStyle = '#ff9a10';
+      ctx.beginPath(); ctx.arc(bu, 0, 0.042, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#ffe9a0';
+      ctx.beginPath(); ctx.arc(bu - 0.012, -0.012, 0.016, 0, TAU); ctx.fill();
+    }
+  }
   drawMirror(ctx, V, p, nearSd);
+}
+
+// Schneehaube (lokale Dachkoordinaten u, v)
+function snowCap(ctx, u0, u1, v0, v1) {
+  ctx.fillStyle = '#c9dcef';
+  rrect(ctx, u0 + 0.01, v0 + 0.015, u1 - u0, v1 - v0, 0.07); ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  rrect(ctx, u0, v0, u1 - u0, v1 - v0, 0.07); ctx.fill();
+  ctx.fillStyle = 'rgba(160,190,225,0.35)';
+  rrect(ctx, u0 + 0.03, v0 + (v1 - v0) * 0.55, u1 - u0 - 0.06, (v1 - v0) * 0.3, 0.05); ctx.fill();
+}
+// Staub/Schlamm am unteren Rand einer Seitenwand (Koordinaten u, z)
+function dustBand(ctx, u0, u1, z0, z1) {
+  const h = (z1 - z0) * 0.45;
+  const g = ctx.createLinearGradient(0, z0, 0, z0 + h);
+  g.addColorStop(0, VSTYLE.dust);
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.globalAlpha *= 0.55;
+  ctx.fillStyle = g;
+  ctx.fillRect(u0 + 0.02, z0, u1 - u0 - 0.04, h);
+  ctx.globalAlpha /= 0.55;
 }
 
 function arrowPath(ctx, ax, av, la, wa) {
@@ -794,8 +844,8 @@ function cargoSide(ctx, p, hex, isBox) {
     ctx.fillStyle = 'rgba(255,255,255,0.22)';
     for (let i = 1; i < k; i++) ctx.fillRect(a + i * st + 0.004, z0 + 0.04, 0.007, h - 0.065);
     // Zierstreifen
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillRect(a, z0 + h * 0.62, b - a, 0.014);
+    ctx.fillStyle = VSTYLE.stripe || 'rgba(255,255,255,0.85)';
+    ctx.fillRect(a, z0 + h * 0.62, b - a, VSTYLE.stripe ? 0.03 : 0.014);
     ctx.fillStyle = 'rgba(255,255,255,0.45)';
     ctx.fillRect(a, z0 + h * 0.62 - 0.022, b - a, 0.007);
   } else {
@@ -810,7 +860,12 @@ function cargoSide(ctx, p, hex, isBox) {
     // Planenkante oben
     ctx.fillStyle = 'rgba(0,0,0,0.12)';
     ctx.fillRect(a - 0.02, z1 - 0.034, b - a + 0.04, 0.008);
+    if (VSTYLE.stripe) {
+      ctx.fillStyle = VSTYLE.stripe;
+      ctx.fillRect(a, z0 + h * 0.2, b - a, 0.03);
+    }
   }
+  if (VSTYLE.dust) dustBand(ctx, p.x0, p.x1, z0, z1);
   // Unterfahrschutz / Alu-Rahmen unten mit Seitenmarkierung
   ctx.fillStyle = '#c9d0d7';
   ctx.fillRect(p.x0 + 0.03, z0, p.x1 - p.x0 - 0.06, 0.03);
@@ -873,6 +928,10 @@ function drawCargo(ctx, V, p, c, o, g) {
   // Glanz
   ctx.fillStyle = 'rgba(255,255,255,0.12)';
   rrect(ctx, p.x0 + 0.08, -hw * 0.72, len - 0.16, hw * 0.2, 0.04); ctx.fill();
+  if (VSTYLE.snow) {
+    snowCap(ctx, p.x0 + 0.04, p.x1 - 0.04, -hw + 0.02, -hw + 0.12);
+    snowCap(ctx, p.x0 + 0.04, p.x1 - 0.04, hw - 0.12, hw - 0.02);
+  }
   // Markierungsleuchten
   if (p === g.rear) {
     ctx.fillStyle = '#e01b2e';
@@ -1061,6 +1120,22 @@ function drawVehShadow(ctx, V, g, lift) {
   }
 }
 
+function drawUnderGlow(ctx, V, g, col) {
+  setLocal(ctx, V, 0);
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = col;
+  for (const [k, a] of [[0.34, 0.16], [0.2, 0.22], [0.08, 0.3]]) {
+    ctx.globalAlpha = a;
+    ctx.save();
+    ctx.scale((g.hl + k) / g.hl, (0.45 + k) / 0.45);
+    path(ctx, g.outline);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+}
+
 function drawGlow(ctx, V, g, h, front) {
   const n = projW(ctx, V, g.outline, ZT);
   setWorld(ctx, V);
@@ -1089,9 +1164,25 @@ function glow(ctx, V, u, v, z, rgb, rad, a) {
 function drawLights(ctx, V, g, o) {
   const ind = o.indicator || 0;
   const blink = ind !== 0 && performance.now() % 760 < 400;
-  if (!o.brake && !o.reverse && !blink) return;
+  const head = VSTYLE.lights || 0;
+  if (!o.brake && !o.reverse && !blink && !head) return;
   setWorld(ctx, V);
   const cell = V.cell, r = g.rear, cab = g.cab;
+  if (head) {
+    // Lichtkegel vor dem Fahrzeug und leuchtende Scheinwerfer
+    ctx.globalCompositeOperation = 'lighter';
+    for (const sd of SIDES) {
+      pp(V, cab.x1 + 0.55, sd * 0.22, 0);
+      const bx = PX, by = PY;
+      const gr = ctx.createRadialGradient(bx, by, 0, bx, by, 0.75 * cell);
+      gr.addColorStop(0, `rgba(255,236,170,${0.32 * head})`);
+      gr.addColorStop(1, 'rgba(255,236,170,0)');
+      ctx.fillStyle = gr;
+      ctx.fillRect(bx - cell, by - cell, 2 * cell, 2 * cell);
+    }
+    if (V.sa > 0.05) for (const sd of SIDES) glow(ctx, V, cab.x1, sd * (cab.y1 - 0.1), cab.z0 + 0.06, '255,246,210', 0.2 * cell, 0.8 * head);
+    ctx.globalCompositeOperation = 'source-over';
+  }
   const rearVis = -V.sa > 0.05;
   const rz = rearVis ? r.z0 - 0.01 : ZT - 0.004, rx = rearVis ? r.x0 : r.x0 + 0.03;
   ctx.globalCompositeOperation = 'lighter';
@@ -1204,6 +1295,7 @@ export function drawVehicle(ctx, o) {
   };
   ctx.globalAlpha = ga * alpha;
   drawVehShadow(ctx, V, g, lift);
+  if (VSTYLE.glow && !o.hidden) drawUnderGlow(ctx, V, g, VSTYLE.glow);
   const hl = o.highlight || 0;
   const pulse = hl > 0 ? Math.min(1, hl) * (0.8 + 0.2 * Math.sin(performance.now() * 0.008)) : 0;
   if (pulse > 0) drawGlow(ctx, V, g, pulse, false);
@@ -1218,7 +1310,7 @@ export function drawVehicle(ctx, o) {
     if (cacheable || flash > 0 || alpha < 1) {
       let spr;
       if (cacheable) {
-        const key = `${g.size}|${c.tarp[0]}|${c.tarp[1]}|${c.sym[0]}|${c.sym[1]}|${c.hidden}|${o.arrow !== false}|${!!o.symbols}|${cell}|${((q % 8) + 8) % 8}|${M.a}${open > 0 ? loadKey(o.load) : ''}`;
+        const key = `${g.size}|${c.tarp[0]}|${c.tarp[1]}|${c.sym[0]}|${c.sym[1]}|${c.hidden}|${o.arrow !== false}|${!!o.symbols}|${cell}|${((q % 8) + 8) % 8}|${M.a}${VKEY}${open > 0 ? loadKey(o.load) : ''}`;
         spr = SPRITES.get(key);
         if (spr) { SPRITES.delete(key); SPRITES.set(key, spr); }
         else {
