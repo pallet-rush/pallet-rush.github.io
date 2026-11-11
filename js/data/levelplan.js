@@ -211,6 +211,27 @@ export const LEVEL_PLAN = [...WORLD1];
 for (let w = 1; w <= 9; w++) for (let j = 0; j < 10; j++) LEVEL_PLAN.push(worldLevel(w, j));
 for (let w = 10; w <= 29; w++) for (let j = 0; j < 10; j++) LEVEL_PLAN.push(lateLevel(w, j));
 
+// Zweiter Versuch für Level, die mit dem vollen Plan nicht erzeugt werden konnten
+// (ab v0.7.1): etwas weniger Mindest-LKWs, eine Falle weniger, kleineres Tor, nur ein Tor.
+export const RELAX = new Set([27, 28, 29, 30, 46, 53, 58, 59, 63, 64, 68, 76, 79, 83, 84, 88, 89, 90, 93, 94, 96, 98, 110, 124, 128, 129, 140, 148, 149, 150, 154, 158, 159, 168, 180, 188, 189, 190, 214, 215, 224, 227, 228, 240, 241, 246, 248, 249, 250, 254, 258, 274, 278, 279, 284, 288, 290, 293, 298, 300]);
+for (const n of RELAX) {
+  const p = LEVEL_PLAN[n - 1];
+  p.minTrucks = Math.max(8, (p.minTrucks || 0) - 3);
+  if (p.traps) p.traps -= 1;
+  if (p.gates) { p.gates = 1; p.gateQ = [Math.min(p.gateQ[0], 3), Math.min(p.gateQ[1], 4)]; }
+  if (p.human != null) p.human += 0.04;
+}
+// Dritter Versuch: noch etwas leichter, keine langen Tore/Anhänger-Zusätze mehr.
+export const RELAX2 = new Set([58, 59, 76, 83, 84, 88, 89, 90, 93, 94, 96, 98, 110, 124, 128, 149, 150, 158, 188, 189, 214, 224, 228, 240, 248, 249, 250, 254, 258, 284, 288]);
+for (const n of RELAX2) {
+  const p = LEVEL_PLAN[n - 1];
+  p.minTrucks = Math.max(8, p.minTrucks - 2);
+  if (p.traps > 2) p.traps -= 1;
+  if (p.human != null) p.human += 0.06;
+  if (p.humanLo) p.humanLo = 0;
+  if (p.gateQ) p.gateQ = [2, 3];
+}
+
 // Welt-Infos (Level-Nummer, an der die Mechanik eingeführt wird)
 export const WORLDS = [
   { from: 1, mech: null },

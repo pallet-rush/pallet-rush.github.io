@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 11.11.2026 · Version 0.7.0
+Stand: 11.11.2026 · Version 0.7.1
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -94,7 +94,11 @@ jedes Level garantiert prüfen kann.
 Ab v0.7.0 sind die Level ab 11 schwerer: mehr LKWs, der simulierte Spieler darf
 seltener gewinnen (Boss-Level höchstens 7 %), und Level 4 und 8 jedes Zehner-Abschnitts
 sind lange Level: mehr und größere LKWs (mehr Paletten), sobald Tore bekannt sind ein
-Tor mit 4–6 wartenden LKWs. Neu erzeugt in Etappen (zuerst 115 Level, der Rest folgt).
+Tor mit 4–6 wartenden LKWs. Ab v0.7.1 sind alle Level ab 11 nach diesem Plan neu erzeugt.
+Level, die der Generator mit dem vollen Plan nicht schafft, bekommen einen zweiten
+(`RELAX`: 3 LKWs weniger, eine Falle weniger, nur ein kleines Tor) und notfalls einen
+dritten Versuch (`RELAX2`: nochmals etwas leichter, Tor mit 2–3 LKWs) – beide Listen
+stehen am Ende von `js/data/levelplan.js`. Betroffen sind vor allem lange und Boss-Level.
 
 ### Abschnitte 1–10 (Level 1–100)
 
