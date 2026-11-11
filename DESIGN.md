@@ -176,7 +176,8 @@ mit Münzen kaufen.
 | Umsortieren | Holt die Blöcke für die geparkten LKWs aus der ganzen Schlange nach vorne und mischt die nächsten 10 übrigen Blöcke | Level 20 | 300 |
 | Kran | Hebt einen beliebigen LKW aus dem Stau direkt an eine freie Rampe | Level 30 | 350 |
 | Gabelstapler | Füllt einen geparkten LKW sofort mit passenden Blöcken vom Ende der Schlange | Level 40 | 400 |
-nAb v0.7.2 steigen die Preise mit der Stärke des Bonus (vorher war Umsortieren mit 200 billiger als die Extra-Rampe).
+
+Ab v0.7.2 steigen die Preise mit der Stärke des Bonus (vorher war Umsortieren mit 200 billiger als die Extra-Rampe).
 
 ## 7. Wirtschaft
 
