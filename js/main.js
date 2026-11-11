@@ -14,8 +14,8 @@ import { LiveLink, newCode, validCode } from './net/live.js';
 // Bonus-Items: Freischalt-Level und Münzpreis (siehe DESIGN.md).
 export const BOOSTERS = [
   { key: 'ramp', unlock: 10, price: 250 },
-  { key: 'shuffle', unlock: 20, price: 200 },
-  { key: 'crane', unlock: 30, price: 300 },
+  { key: 'shuffle', unlock: 20, price: 300 },
+  { key: 'crane', unlock: 30, price: 350 },
   { key: 'forklift', unlock: 40, price: 400 },
 ];
 // Erstes Level jeder neuen Mechanik

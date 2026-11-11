@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 11.11.2026 · Version 0.7.1
+Stand: 11.11.2026 · Version 0.7.2
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -173,9 +173,10 @@ mit Münzen kaufen.
 | Bonus | Wirkung | Freigeschaltet | Preis |
 |---|---|---|---|
 | Extra-Rampe | +1 Rampe für den Rest des Levels (max. 1× pro Level) | Level 10 | 250 |
-| Umsortieren | Holt die Blöcke für die geparkten LKWs aus der ganzen Schlange nach vorne und mischt die nächsten 10 übrigen Blöcke | Level 20 | 200 |
-| Kran | Hebt einen beliebigen LKW aus dem Stau direkt an eine freie Rampe | Level 30 | 300 |
+| Umsortieren | Holt die Blöcke für die geparkten LKWs aus der ganzen Schlange nach vorne und mischt die nächsten 10 übrigen Blöcke | Level 20 | 300 |
+| Kran | Hebt einen beliebigen LKW aus dem Stau direkt an eine freie Rampe | Level 30 | 350 |
 | Gabelstapler | Füllt einen geparkten LKW sofort mit passenden Blöcken vom Ende der Schlange | Level 40 | 400 |
+nAb v0.7.2 steigen die Preise mit der Stärke des Bonus (vorher war Umsortieren mit 200 billiger als die Extra-Rampe).
 
 ## 7. Wirtschaft
 
