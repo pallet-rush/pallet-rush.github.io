@@ -1781,3 +1781,18 @@ body.land .duel-art svg { width: 42px; height: 42px; }
 }
 .countdown.pop { animation: cdpop 0.8s cubic-bezier(.2,1.6,.4,1) both; }
 @keyframes cdpop { 0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; } 25% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; } 80% { transform: translate(-50%, -50%) scale(1); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(0.9); opacity: 0; } }
+
+/* Mehrspieler: Spielstand und Levelwahl (ab v0.7.3) */
+.mp-score { margin: 8px auto 4px; text-align: center; }
+.mp-score small { display: block; font-size: 12px; opacity: .75; text-transform: uppercase; letter-spacing: .06em; }
+.mp-score div { display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 800; }
+.mp-score span { max-width: 38%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-score span.me { color: #1f6fe8; }
+.mp-score b { font-size: 26px; background: #ffe600; color: #222; border-radius: 12px; padding: 0 12px; box-shadow: 0 2px 0 rgba(0,0,0,.25); }
+.mp-pick { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 10px auto 2px; flex-wrap: wrap; }
+.mp-pick .mp-lbl { font-weight: 700; font-size: 14px; }
+.mp-pick .mp-rand, .mp-pick .mp-num { height: 36px; border-radius: 10px; border: 2px solid #c9d3e6; background: #fff; font: inherit; font-weight: 800; font-size: 15px; color: #445; }
+.mp-pick .mp-rand { padding: 0 14px; cursor: pointer; }
+.mp-pick .mp-num { width: 74px; text-align: center; padding: 0 6px; }
+.mp-pick .on { border-color: #1f6fe8; background: #e6f0ff; color: #1f6fe8; }
+.combo-tag { color: #ff8a00; font-weight: 800; }

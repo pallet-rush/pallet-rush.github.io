@@ -177,6 +177,7 @@ export class GameView {
     this.fx = []; // Staubwolken, Funken, Häkchen, Konfetti, Lob-Texte
     this.shakeT = 0; this.shakeA = 0; // Bildschirmwackeln
     this.combo = 0; this.lastFull = 0;
+    this.comboCount = 0; // Kombos in diesem Level (je +1 Münze, ab v0.7.3)
     this.forklifts = [];
     this.cranes = [];
     this.endEv = null;
@@ -1005,6 +1006,7 @@ export class GameView {
         this.lastFull = now;
         this.burst(tv.x, tv.y - 6, 14, now, tv.t.comps.map((c) => COLORS[c.color].hex));
         if (this.combo >= 2) {
+          this.comboCount++;
           const words = String(tr('praise')).split('|');
           const word = words[Math.min(words.length - 1, this.combo - 2)];
           this.fx.push({ type: 'text', x: tv.x, y: tv.y - 18, t0: now, dur: 1300, text: word, sub: `${tr('combo')} x${this.combo}` });

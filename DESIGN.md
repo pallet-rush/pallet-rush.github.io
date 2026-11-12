@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 11.11.2026 · Version 0.7.2
+Stand: 12.11.2026 · Version 0.7.3
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -181,10 +181,13 @@ Ab v0.7.2 steigen die Preise mit der Stärke des Bonus (vorher war Umsortieren m
 
 ## 7. Wirtschaft
 
-- Pro geschafftem Level: **50 Münzen**, **+25** wenn es beim ersten Versuch
-  klappt.
-- Bereits geschaffte Level nochmal spielen: 10 Münzen.
-- Ein Bonus kostet also etwa 4–8 Level Spielzeit.
+- Pro geschafftem Level: **30 Münzen**, **+10** wenn es beim ersten Versuch
+  klappt (ab v0.7.3; vorher 50/+25 – man verdiente zu schnell zu viel).
+- Bereits geschaffte Level nochmal spielen: 5 Münzen (vorher 10).
+- **+1 Münze pro Kombo** (ab v0.7.3): jedes Mal, wenn ein LKW innerhalb von 2,6 s
+  nach dem vorigen voll wird („Kombo x2“, „x3“ …). Steht als „+N Kombo“ im
+  Sieg-Fenster; wird nicht mit dem Schwierigkeits-Faktor multipliziert.
+- Ein Bonus kostet also etwa 6–12 Level Spielzeit.
 - **Sterne** pro Level: 3 Sterne ohne Bonus beim ersten Versuch, je −1 für
   Bonus-Einsatz bzw. weiteren Versuch (mindestens 1). Der beste Wert zählt;
   Sterne pro Welt stehen auf dem Welt-Banner der Levelauswahl (max. 60).
@@ -210,7 +213,7 @@ Ab v0.7.2 steigen die Preise mit der Stärke des Bonus (vorher war Umsortieren m
   Level (auch wenn noch nicht freigeschaltet), danach Vergleich und „Zurückfordern“.
 - Name einmalig abfragen (max. 14 Zeichen, gespeichert in `save.nick`);
   Namen aus Links werden bereinigt und HTML-escaped.
-- Sieg im Duell: +40 Münzen, pro Herausforderung nur einmal (`save.duels`, letzte 50).
+- Sieg im Duell: +25 Münzen (ab v0.7.3, vorher 40), pro Herausforderung nur einmal (`save.duels`, letzte 50).
   Duelle ändern keinen Level-Fortschritt, keine Sterne, keine Fehlversuche.
 
 ## 7c. Querformat (ab v0.3.9)
@@ -237,11 +240,16 @@ Ab v0.7.2 steigen die Preise mit der Stärke des Bonus (vorher war Umsortieren m
   (Angebot/Antwort/ICE) läuft über den öffentlichen PeerJS-Server
   (`js/net/live.js`, exaktes PeerJS-Nachrichtenformat). Kein TURN-Server:
   klappt keine direkte Verbindung in 15 s, Meldung „nicht direkt verbinden“.
-- Ablauf: beide verbunden → Host wählt Level (≤ kleinerer Fortschritt beider,
-  aus den letzten 15) → Countdown 3-2-1-Los, Uhr startet bei „Los“.
+- Ablauf: beide verbunden → Vorraum (ab v0.7.3): „Nächstes Level: Zufall | Nr.“ –
+  beide dürfen ein Level wählen (1–300, auch noch nicht freigeschaltete), der letzte
+  Wunsch gilt und wird dem anderen angezeigt. Ohne Wahl: Zufallslevel aus 11–300.
+  Der Gastgeber tippt „Los geht’s“ → Countdown 3-2-1-Los, Uhr startet bei „Los“.
+  Die Wahl gilt für eine Runde; im Ergebnis-Fenster kann man fürs nächste Level neu wählen.
+- Spielstand (ab v0.7.3): Siege beider Spieler werden über alle Runden im selben
+  Raum gezählt und nach jedem Level im Ergebnis-Fenster gezeigt („Stand Nino 2 : 1 Max“).
 - HUD zeigt Name und Fortschrittsbalken des Gegners live. Neustart nach
   Verlust ist möglich, die Uhr läuft weiter. Wer zuerst fertig ist (kleinere
-  Zeit), gewinnt: +30 Münzen. Danach „Revanche“ (neues Level) oder Menü.
+  Zeit), gewinnt: +20 Münzen (ab v0.7.3, vorher 30). Danach „Revanche“ (neues Level) oder Menü.
 - Verlässt der Gegner das Duell oder bricht die Verbindung ab, gibt es eine Meldung.
   Keine Boni, kein Einfluss auf Level-Fortschritt oder Sterne.
 
@@ -259,9 +267,11 @@ Ab v0.7.2 steigen die Preise mit der Stärke des Bonus (vorher war Umsortieren m
   beide Spiele exakt gleich (Spiellogik ist deterministisch). Kann ein LKW nicht los,
   bekommt der Gast die gewohnte Rückmeldung. Weichen die Spiele doch ab, startet der
   Gastgeber das Level für beide neu.
-- Keine Boni. Gewinnen bringt beiden 40 Münzen; der Gastgeber wählt „Weiter“ oder
-  „Nochmal“, der Gast wartet. Neustart über das Menü ebenfalls nur gemeinsam.
-- Startlevel: das höchste Level, das beide freigeschaltet haben.
+- Keine Boni. Gewinnen bringt beiden 25 Münzen (ab v0.7.3, vorher 40); der Gastgeber
+  wählt „Weiter“ oder „Nochmal“, der Gast wartet. Neustart über das Menü ebenfalls nur gemeinsam.
+- Level (ab v0.7.3): wie beim Live-Duell – Vorraum mit „Zufall | Nr.“, beide dürfen
+  wählen; „Weiter“ nimmt das gewählte Level, sonst ein Zufallslevel aus 11–300.
+  (Vorher: höchstes gemeinsam freigeschaltetes Level, dann der Reihe nach.)
 
 ## 8. Fairness-Garantien (Level-Pipeline)
 

@@ -20,7 +20,9 @@ export const BOOSTERS = [
 ];
 // Erstes Level jeder neuen Mechanik
 const MECH_INTRO = { 11: 'hidden', 21: 'gate', 31: 'barrier', 41: 'rush', 51: 'trailer', 61: 'chain', 71: 'covered', 81: 'turntable', 91: 'master' };
-const REWARD = { win: 50, firstTry: 25, replay: 10 };
+// ab v0.7.3 weniger (vorher 50/25/10), dafür +1 Münze pro Kombo
+const REWARD = { win: 30, firstTry: 10, replay: 5 };
+const COMBO_COIN = 1;
 // Schwierigkeit: folgt dem Levelplan (js/data/levelplan.js): Das 10. Level jeder Welt
 // ist ein Boss-Level (am wenigsten Spielraum), das 6. ist knackig. Schwere Level geben mehr Münzen.
 const DIFF_MULT = { normal: 1, hard: 1.5, vhard: 2 };
@@ -384,7 +386,8 @@ function handleWon() {
   const firstWin = !rec.won;
   const firstTry = firstWin && rec.fails === 0;
   const diff = difficulty(levelNo);
-  const reward = Math.round((firstWin ? REWARD.win + (firstTry ? REWARD.firstTry : 0) : REWARD.replay) * DIFF_MULT[diff]);
+  const combos = view.comboCount || 0;
+  const reward = Math.round((firstWin ? REWARD.win + (firstTry ? REWARD.firstTry : 0) : REWARD.replay) * DIFF_MULT[diff]) + combos * COMBO_COIN;
   const coinsBefore = save.coins;
   rec.won = true;
   if (!rec.best || game.moves < rec.best) rec.best = game.moves;
@@ -405,7 +408,7 @@ function handleWon() {
   showDialog({
     title: t('won'),
     cls: 'win',
-    html: `<div class="win-stars">${[1, 2, 3].map((k) => `<span class="star ${k <= stars ? 'on' : ''}" style="animation-delay:${0.25 + k * 0.28}s"></span>`).join('')}</div><img class="result-art" src="assets/win.png" alt=""><p>${stars < 3 ? t(usedBoosters > 0 ? 'starHintBooster' : 'starHintRetry') : t('wonText')}</p><div class="reward"><span class="coin"></span><span class="reward-num">+0</span>${firstTry ? ` <small>${t('firstTry')}</small>` : ''}${diff !== 'normal' ? ` <small class="diff-tag ${diff}">${t(diff)} ×${DIFF_MULT[diff]}</small>` : ''}</div>`,
+    html: `<div class="win-stars">${[1, 2, 3].map((k) => `<span class="star ${k <= stars ? 'on' : ''}" style="animation-delay:${0.25 + k * 0.28}s"></span>`).join('')}</div><img class="result-art" src="assets/win.png" alt=""><p>${stars < 3 ? t(usedBoosters > 0 ? 'starHintBooster' : 'starHintRetry') : t('wonText')}</p><div class="reward"><span class="coin"></span><span class="reward-num">+0</span>${firstTry ? ` <small>${t('firstTry')}</small>` : ''}${combos ? ` <small class="combo-tag">${fill(t('comboCoins'), { n: combos })}</small>` : ''}${diff !== 'normal' ? ` <small class="diff-tag ${diff}">${t(diff)} ×${DIFF_MULT[diff]}</small>` : ''}</div>`,
     actions: [
       { label: t('next'), cls: 'primary pulse', fn: () => startLevel(levelNo + 1) },
       { label: t('menu'), fn: showMenu },
@@ -917,7 +920,7 @@ window.__pr = { get game() { return game; }, get duel() { return duel; }, get li
 // ---------- Duell per Link ----------
 // Ein Spieler schafft ein Level auf Zeit und schickt einen Link mit Level, Zeit, Zügen
 // und Namen. Wer den Link öffnet, spielt dasselbe Level gegen diese Zeit. Kein Server nötig.
-const DUEL_REWARD = 40;
+const DUEL_REWARD = 25;
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fill = (str, o) => str.replace(/\{(\w)\}/g, (_, k) => (o[k] ?? ''));
 
@@ -1182,7 +1185,7 @@ function showTimeDuel() {
 // ---------- Live-Duell (Echtzeit) ----------
 // Beide spielen gleichzeitig dasselbe Level; jeder sieht den Fortschritt des anderen.
 // Wer zuerst fertig ist, gewinnt. Verlieren (alle Rampen voll) kostet nur Zeit: neu starten.
-const LIVE_REWARD = 30;
+const LIVE_REWARD = 20;
 const oppName = () => esc(live?.opp?.n || '???');
 
 function readLiveLink() {
@@ -1213,7 +1216,7 @@ function endLive() {
 
 function newLive(host, code, mode = 'duel') {
   endLive();
-  live = { host, code, mode, link: null, opp: null, round: 0, ready: {}, myTime: null, oppTime: null, oppProg: null, over: false, countdown: false };
+  live = { host, code, mode, link: null, opp: null, round: 0, ready: {}, myTime: null, oppTime: null, oppProg: null, over: false, countdown: false, pick: null, score: { me: 0, opp: 0 } };
   const me = live;
   me.link = new LiveLink({
     onOpen: () => { if (live === me) me.link.send({ type: 'hello', n: save.nick, max: save.maxLevel, v: VERSION }); },
@@ -1306,13 +1309,16 @@ function onLiveMsg(m) {
   switch (m.type) {
     case 'hello': {
       live.opp = { n: cleanNick(m.n) || '???', max: Math.max(1, Math.min(LEVELS.length, m.max | 0 || 1)) };
-      if (live.host) { showLiveRoom(); setTimeout(() => { if (live && live.host && !live.round) (live.mode === 'coop' ? coopStart() : liveStartRound()); }, 900); }
-      else {
-        const st = $('#modal-panel .live-status');
-        if (st) st.innerHTML = `<i class="live-dot on"></i>${fill(t('liveConnected'), { n: oppName() })}`;
-      }
+      if (live.host) live.link.send({ type: 'mode', mode: live.mode });
+      showLiveLobby();
       break;
     }
+    case 'mode':
+      if (!live.host && (m.mode === 'coop' || m.mode === 'duel')) { live.mode = m.mode; if (!live.round) showLiveLobby(); }
+      break;
+    case 'pick': // Levelwunsch des anderen (0 = Zufall)
+      setPick(Number.isInteger(m.level) && m.level >= 1 && m.level <= LEVELS.length ? m.level : null, true);
+      break;
     case 'start':
       if (!live.host && Number.isInteger(m.level) && m.level >= 1 && m.level <= LEVELS.length) {
         if (m.mode === 'coop') beginCoopRound(m.level, m.round | 0);
@@ -1356,12 +1362,18 @@ function onLiveMsg(m) {
   }
 }
 
-// Gastgeber wählt ein Level, das beide schon kennen
+// Level der nächsten Runde (ab v0.7.3): gewähltes Level, sonst Zufall aus allen
+// Leveln ab 11 (1–10 sind Lernlevel). Die Wahl gilt für eine Runde.
+const RANDOM_FROM = 11;
+function nextMpLevel() {
+  const n = live?.pick;
+  if (n) return n;
+  return RANDOM_FROM + Math.floor(Math.random() * (LEVELS.length - RANDOM_FROM + 1));
+}
+
 function liveStartRound() {
   if (!live || !live.host) return;
-  const hi = Math.max(1, Math.min(save.maxLevel, live.opp?.max || 1, LEVELS.length));
-  const lo = Math.max(1, hi - 14);
-  const level = lo + Math.floor(Math.random() * (hi - lo + 1));
+  const level = nextMpLevel();
   const round = live.round + 1;
   live.link.send({ type: 'start', level, round });
   beginLiveRound(level, round);
@@ -1369,7 +1381,7 @@ function liveStartRound() {
 
 function beginLiveRound(level, round) {
   if (duel) clearInterval(duel.timer);
-  Object.assign(live, { round, ready: {}, myTime: null, oppTime: null, oppProg: { done: 0, total: 0, st: 'playing' }, over: false, rewarded: false });
+  Object.assign(live, { round, ready: {}, myTime: null, oppTime: null, oppProg: { done: 0, total: 0, st: 'playing' }, over: false, rewarded: false, pick: null });
   duel = { level, opp: null, live: true, t0: 0, time: 0, timer: 0 };
   hideModal();
   goFullscreen();
@@ -1445,6 +1457,7 @@ function resolveLive() {
   if (!result || live.shown === result + live.round) return;
   live.shown = result + live.round;
   live.over = true;
+  if (live.counted !== live.round) { live.counted = live.round; live.score[result === 'win' ? 'me' : 'opp']++; }
   if (result === 'lose' && me == null) {
     // Gegner ist schon im Ziel: eigenes Spiel anhalten
     stopDuelClock();
@@ -1468,13 +1481,82 @@ function resolveLive() {
     title: result === 'win' ? t('liveWin') : fill(t('liveLose'), { n: oppName() }),
     cls: result === 'win' ? 'win duel' : 'duel lose-duel',
     html: `<div class="duel-board"><small>${t('level')} ${levelNo}</small>${rows}</div>`
+      + scoreHtml()
       + (reward ? `<div class="reward"><span class="coin"></span><span class="reward-num">+${reward}</span> <small>${t('duelReward')}</small></div>` : '')
+      + pickHtml()
       + `<p class="live-status"><i class="live-dot on"></i>${live.ready.opp ? fill(t('liveRematchAsk'), { n: oppName() }) : '&nbsp;'}</p>`,
     actions: [
       { label: t('liveRematch'), cls: 'primary pulse', fn: liveRematch },
       { label: t('menu'), cls: 'quiet', fn: showMenu },
     ],
   });
+  bindPick();
+}
+
+// Spielstand über mehrere Runden (ab v0.7.3)
+function scoreHtml() {
+  if (!live) return '';
+  const s = live.score;
+  return `<div class="mp-score"><small>${t('mpScore')}</small><div><span class="me">${esc(save.nick)}</span><b>${s.me} : ${s.opp}</b><span>${oppName()}</span></div></div>`;
+}
+
+// Levelwahl für die nächste Runde: Zufall oder eine Nummer. Beide dürfen wählen,
+// der letzte Wunsch gilt; der Gastgeber startet damit die Runde.
+function pickHtml() {
+  if (!live) return '';
+  const n = live.pick;
+  return `<div class="mp-pick"><span class="mp-lbl">${t('mpNext')}</span>`
+    + `<button type="button" class="mp-rand ${n ? '' : 'on'}">${t('mpRandom')}</button>`
+    + `<input class="mp-num ${n ? 'on' : ''}" type="number" inputmode="numeric" min="1" max="${LEVELS.length}" placeholder="${t('mpPick')}" value="${n || ''}"></div>`;
+}
+
+function bindPick() {
+  const box = $('#modal-panel .mp-pick');
+  if (!box) return;
+  const rand = box.querySelector('.mp-rand');
+  const num = box.querySelector('.mp-num');
+  rand.onclick = () => { num.value = ''; setPick(null); };
+  const commit = () => {
+    const v = parseInt(num.value, 10);
+    if (!v) { setPick(null); return; }
+    const n = Math.max(1, Math.min(LEVELS.length, v));
+    num.value = n;
+    setPick(n);
+  };
+  num.addEventListener('change', commit);
+  num.addEventListener('keydown', (e) => { if (e.key === 'Enter') { commit(); num.blur(); } });
+}
+
+function setPick(n, fromOpp = false) {
+  if (!live) return;
+  live.pick = n || null;
+  if (!fromOpp) live.link?.send({ type: 'pick', level: live.pick || 0 });
+  const box = $('#modal-panel .mp-pick');
+  if (box) {
+    box.querySelector('.mp-rand').classList.toggle('on', !live.pick);
+    const num = box.querySelector('.mp-num');
+    num.classList.toggle('on', !!live.pick);
+    if (fromOpp) num.value = live.pick || '';
+  }
+  if (fromOpp) toast(live.pick ? fill(t('mpOppPicked'), { n: oppName(), l: live.pick }) : fill(t('mpOppRandom'), { n: oppName() }), 1800);
+}
+
+// Nach dem Verbinden: Levelwahl, der Gastgeber startet
+function showLiveLobby() {
+  if (!live || !live.opp) return;
+  const coopMode = live.mode === 'coop';
+  showDialog({
+    title: coopMode ? t('coopTitle') : t('liveTitle'),
+    cls: 'duel live',
+    html: `<p class="live-status"><i class="live-dot on"></i>${fill(t('mpConnected'), { n: oppName() })}</p>`
+      + pickHtml()
+      + (live.host ? '' : `<p class="live-status">${fill(t('mpWaitHost'), { n: oppName() })}</p>`),
+    actions: live.host
+      ? [{ label: t('mpStart'), cls: 'primary pulse', fn: () => (coopMode ? coopStart() : liveStartRound()) },
+        { label: t('cancel'), cls: 'quiet', fn: () => { endLive(); showMenu(); } }]
+      : [{ label: t('cancel'), cls: 'quiet', fn: () => { endLive(); showMenu(); } }],
+  });
+  bindPick();
 }
 
 function liveRematch() {
@@ -1516,7 +1598,7 @@ function liveGone(reason) {
 // Hälfte (Gast) geteilt, jeder tippt nur seine LKWs an. Paletten, Rampen und
 // Buchten teilen sich beide. Der Gastgeber führt alle Züge aus und schickt sie in
 // derselben Reihenfolge an den Gast – so bleiben beide Spiele exakt gleich.
-const COOP_REWARD = 40;
+const COOP_REWARD = 25;
 const COOP_COLORS = ['#1f6fe8', '#ff8a00'];
 
 function endCoop() {
@@ -1551,7 +1633,7 @@ function coopSplit(g) {
 
 function coopStart(level) {
   if (!live || !live.host) return;
-  const lv = level || Math.max(1, Math.min(save.maxLevel, live.opp?.max || 1, LEVELS.length));
+  const lv = level || nextMpLevel();
   const round = live.round + 1;
   live.link.send({ type: 'start', mode: 'coop', level: lv, round });
   beginCoopRound(lv, round);
@@ -1560,6 +1642,7 @@ function coopStart(level) {
 function beginCoopRound(level, round) {
   live.round = round;
   live.over = false;
+  live.pick = null;
   endDuelOnly();
   coop = { me: live.host ? 0 : 1, round, owner: null, over: false };
   hideModal();
@@ -1652,7 +1735,7 @@ function coopEnd(won) {
   const host = coop.me === 0;
   const actions = host
     ? [
-      { label: won ? t('next') : t('liveRestart'), cls: 'primary pulse', fn: () => coopStart(won ? Math.min(levelNo + 1, LEVELS.length) : levelNo) },
+      { label: won ? t('next') : t('liveRestart'), cls: 'primary pulse', fn: () => coopStart(won ? 0 : live?.pick || levelNo) },
       { label: t('menu'), cls: 'quiet', fn: showMenu },
     ]
     : [{ label: t('menu'), cls: 'quiet', fn: showMenu }];
@@ -1660,7 +1743,9 @@ function coopEnd(won) {
     title: won ? t('coopWin') : t('lost'),
     cls: won ? 'win duel' : 'lose',
     html: (won ? `<img class="result-art" src="assets/win.png" alt=""><p>${fill(t('coopWinText'), { n: oppName() })}</p><div class="reward"><span class="coin"></span><span class="reward-num">+${reward}</span></div>` : `<p>${t('coopLostText')}</p>`)
+      + (won ? pickHtml() : '')
       + (host ? '' : `<p class="live-status"><i class="live-dot on"></i>${fill(t('coopWait'), { n: oppName() })}</p>`),
     actions,
   });
+  bindPick();
 }
