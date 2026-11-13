@@ -90,8 +90,37 @@ function safeArea() {
 }
 // Nach dem Drehen immer neu messen (nicht nur, wenn sich die Lücke ändert): sonst
 // bleiben Leinwand und Ränder auf der alten Ausrichtung und Tipps treffen daneben.
-const refit = () => { fixViewportGap(); applyOrient(); window.__prView?.resize(); if (typeof game !== 'undefined' && game) measureInsets(); };
-window.addEventListener('orientationchange', () => { setTimeout(refit, 300); setTimeout(refit, 800); });
+// iOS (v. a. Homescreen-App) behält nach dem Zurückdrehen teils einen unsichtbaren
+// Scroll-Versatz oder eine veraltete Trefferfläche: Bild und Tipps passen dann nicht
+// mehr zusammen. Deshalb nach jedem Drehen auf 0 scrollen und die Leinwand einmal
+// aus- und wieder einblenden, damit WebKit ihre Lage neu berechnet (ab v0.7.4).
+function unshift() {
+  if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+  const se = document.scrollingElement || document.documentElement;
+  if (se.scrollTop || se.scrollLeft) { se.scrollTop = 0; se.scrollLeft = 0; }
+  if (document.body.scrollTop) document.body.scrollTop = 0;
+}
+function reflowCanvas() {
+  const c = document.getElementById('game');
+  if (!c) return;
+  c.style.display = 'none';
+  void c.offsetHeight;
+  c.style.display = '';
+}
+const refit = () => { unshift(); fixViewportGap(); applyOrient(); window.__prView?.resize(); if (typeof game !== 'undefined' && game) measureInsets(); };
+let lastLand = null;
+function afterTurn() {
+  const land = isLand();
+  const turned = lastLand !== null && land !== lastLand;
+  lastLand = land;
+  refit();
+  if (turned) { reflowCanvas(); [150, 400, 900].forEach((ms) => setTimeout(() => { unshift(); refit(); }, ms)); }
+}
+window.addEventListener('orientationchange', () => { setTimeout(afterTurn, 300); setTimeout(refit, 800); });
+window.addEventListener('resize', afterTurn);
+window.addEventListener('scroll', unshift, { passive: true });
+window.visualViewport?.addEventListener('resize', () => setTimeout(afterTurn, 50));
+window.visualViewport?.addEventListener('scroll', unshift);
 window.addEventListener('pageshow', () => setTimeout(refit, 50));
 setTimeout(refit, 600);
 setTimeout(refit, 2000);
@@ -703,6 +732,15 @@ function showPause() {
   });
 }
 
+// Diagnose für Tipp-Versatz (ab v0.7.4): Scroll, sichtbarer Ausschnitt, Leinwand, letzter Tipp
+function tapDiag() {
+  const r = view.canvas.getBoundingClientRect();
+  const vv = window.visualViewport;
+  const lt = view.lastTap;
+  return `sy ${Math.round(window.scrollY)} · vvo ${vv ? Math.round(vv.offsetTop) + '/' + Math.round(vv.offsetLeft) : '-'} · vs ${vv ? vv.scale.toFixed(2) : '-'} · cv ${Math.round(r.top)}/${Math.round(r.width)}×${Math.round(r.height)} · lw ${view.cw}×${view.ch}`
+    + (lt ? ` · tap ${lt.cx},${lt.cy}→${lt.x},${lt.y}` : '');
+}
+
 function showSettings(back) {
   const s = save.settings;
   const row = (key, label, note = '') => `<div class="setting"><span>${label} ${note ? `<small>${note}</small>` : ''}</span><button class="switch ${s[key] ? 'on' : ''}" data-key="${key}"></button></div>`;
@@ -711,7 +749,7 @@ function showSettings(back) {
     title: t('settings'),
     html: row('sound', t('sound')) + row('music', t('music')) + row('vibration', t('vibration'), t('vibrationNote')) + row('symbols', t('symbols'))
       + `<div class="setting"><span>${t('language')}</span><div class="seg"><button data-lang="de" class="${lang === 'de' ? 'on' : ''}">DE</button><button data-lang="en" class="${lang === 'en' ? 'on' : ''}">EN</button></div></div>`
-      + `<div class="vp-diag">v${VERSION} · ${vpDiag.mode}${vpDiag.ns ? '/ns' : ''} · ${vpDiag.w}×${vpDiag.ih} · fix ${vpDiag.fix} · vv ${vpDiag.vv} · ch ${vpDiag.ch} · scr ${vpDiag.sh} · gap ${vpDiag.gap}</div>`,
+      + `<div class="vp-diag">v${VERSION} · ${vpDiag.mode}${vpDiag.ns ? '/ns' : ''} · ${vpDiag.w}×${vpDiag.ih} · fix ${vpDiag.fix} · vv ${vpDiag.vv} · ch ${vpDiag.ch} · scr ${vpDiag.sh} · gap ${vpDiag.gap}<br>${tapDiag()}</div>`,
     actions: [{ label: t('back'), cls: 'primary', fn: () => (back ? back() : hideModal()) }],
   });
   const p = $('#modal-panel');

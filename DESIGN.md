@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 12.11.2026 · Version 0.7.3
+Stand: 13.11.2026 · Version 0.7.4
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -229,6 +229,12 @@ Ab v0.7.2 steigen die Preise mit der Stärke des Bonus (vorher war Umsortieren m
 - Nach dem Drehen (ab v0.4.8): Die Leinwand wird per ResizeObserver bei jeder echten
   Größenänderung neu vermessen (iOS ändert die Höhe teils erst nach dem resize-Ereignis);
   Tipps werden zusätzlich auf die tatsächlich angezeigte Größe umgerechnet.
+- Tipp-Versatz nach Hin- und Zurückdrehen unter iOS (ab v0.7.4): nach jedem Wechsel der
+  Ausrichtung wird die Seite auf 0 gescrollt (auch bei `scroll`/`visualViewport`-Ereignissen)
+  und die Leinwand einmal aus- und eingeblendet, damit WebKit ihre Lage neu berechnet.
+  Vor jedem Tipp wird geprüft, ob die Leinwand noch die gemessene Größe hat (sonst neu vermessen).
+  Diagnosezeile in den Einstellungen zeigt Scroll, sichtbaren Ausschnitt, Leinwand und den letzten
+  Tipp (Bildschirm → Spielkoordinaten).
 - Drehen während eines Levels: Abfahrende sind sofort weg, Ankommende stehen
   direkt an ihrer Rampe (oder fahren neu los, wenn sie noch belegt ist).
 

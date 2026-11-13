@@ -741,7 +741,12 @@ export class GameView {
   }
   onPointer(e) {
     if (!this.game) return;
+    // Lage der Leinwand stimmt nicht mehr mit der gemessenen Größe überein (z. B. nach
+    // dem Drehen unter iOS)? Dann vor dem Umrechnen neu vermessen (ab v0.7.4).
+    const rr = this.canvas.getBoundingClientRect();
+    if (Math.abs(rr.width - this.cw) > 1 || Math.abs(rr.height - this.ch) > 1) this.resize();
     const { x, y } = this.toVirtual(e);
+    this.lastTap = { cx: Math.round(e.clientX), cy: Math.round(e.clientY), x: Math.round(x), y: Math.round(y) };
     const L = this.L;
     if (this.select === 'dock' || (y > L.D - 10 && y < L.bayTop + L.bayH)) {
       if (y > L.D - 14 && y < L.bayTop + L.bayH + 8) {
