@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 13.11.2026 · Version 0.7.4
+Stand: 13.11.2026 · Version 0.7.5
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -115,6 +115,9 @@ stehen am Ende von `js/data/levelplan.js`. Betroffen sind vor allem lange und Bo
 | 81–90 | Drehscheibe | Ein LKW auf einer Drehscheibe dreht sich bei jedem Zug um 90°. |
 | 91–100 | Meisterwelt | Alle Mechaniken gemischt. |
 
+Kette (ab v0.7.5): Schloss (auf dem angeketteten LKW) und Schlüssel (auf dem LKW, der es öffnet)
+sind gut doppelt so groß und liegen auf einer dunklen Scheibe mit weißem Rand.
+
 ### Abschnitte 11–20 (ab v0.6.0, Level 101–200)
 
 Keine neue Mechanik mehr. Jeder Abschnitt kombiniert zwei bekannte Mechaniken, die in
@@ -220,7 +223,9 @@ Ab v0.7.2 steigen die Preise mit der Stärke des Bonus (vorher war Umsortieren m
 
 - Der Spieler dreht einfach das Gerät (Manifest `orientation: any`); umgeschaltet
   wird, sobald Breite > 1,15 × Höhe (`body.land`, `view.land`).
-- Szene quer: Fabrik (390 breit) links, Hof mit Ringstraße (372 breit) rechts
+- Szene quer: Fabrik (390 breit) links, Hof mit Ringstraße rechts (ab v0.7.5 so breit wie
+  der Platz hergibt, 372–680; die Höhe begrenzt den Maßstab, die übrige Breite bekommt der Hof;
+  Feldgröße im Hof quer bis 40 statt 30 → LKWs z. B. auf 844×390 gut 1,5× so groß)
   daneben. Die Unterseite des Rings ist die Rampenstraße; Verkehr im
   Uhrzeigersinn, LKWs fahren nach links an den Buchten vorbei, setzen nach rechts
   zurück ein und verlassen das Bild links. Stapler kommt von links.

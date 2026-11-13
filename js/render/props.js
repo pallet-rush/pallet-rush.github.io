@@ -3149,6 +3149,15 @@ export function drawBadge(ctx, x, y, r, color = '#ff0a1e', text = '') {
   ctx.restore();
 }
 
+// Dunkle Scheibe mit weißem Rand als Hintergrund für Schloss und Schlüssel (ab v0.7.5).
+export function drawIconDisc(ctx, x, y, r) {
+  ctx.save();
+  circle(ctx, x + r * 0.06, y + r * 0.14, r * 1.06, 'rgba(0,0,0,0.3)');
+  circle(ctx, x, y, r * 1.06, '#ffffff');
+  circle(ctx, x, y, r * 0.9, '#2a3550');
+  ctx.restore();
+}
+
 // Vorhängeschloss (gold). s = Höhe.
 export function drawPadlock(ctx, x, y, s = 16, color = '#ffc21a') {
   const w = s * 0.72, h = s * 0.55;

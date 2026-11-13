@@ -220,10 +220,14 @@ export class GameView {
     this.land = cw > ch * 1.15;
     let scale;
     if (this.land) {
-      this.VW = FW + LOT_W;
       const aw = Math.max(100, cw - (ins.left || 0) - (ins.right || 0));
       const ah = Math.max(100, ch - ins.top - ins.bottom);
-      scale = Math.min(aw / this.VW, ah / LAND_H);
+      // Ab v0.7.5: Die Höhe begrenzt meist den Maßstab; die übrige Breite bekommt der
+      // Hof (vorher fest 372), damit LKWs größer werden. Höchstens 680 breit.
+      const sH = ah / LAND_H;
+      this.lotW = Math.max(LOT_W, Math.min(680, aw / sH - FW));
+      this.VW = FW + this.lotW;
+      scale = Math.min(aw / this.VW, sH);
       this.offX = (ins.left || 0) + (aw - this.VW * scale) / 2;
       this.extraY = Math.max(0, ah / scale - LAND_H);
     } else {
@@ -327,7 +331,7 @@ export class GameView {
       my = Math.max(my, (y1 - y0) / 2);
       const iw = inner.x2 - inner.x;
       const ih = inner.y2 - inner.y;
-      L.cl = Math.min(30, iw / (2 * mx), ih / (2 * my));
+      L.cl = Math.min(land ? 40 : 30, iw / (2 * mx), ih / (2 * my));
       L.lotO = { x: L.lotC.x - L.cl * (x0 + x1) / 2, y: L.lotC.y - L.cl * (y0 + y1) / 2 };
       L.ca = ca;
       L.sa = sa;
@@ -1889,10 +1893,16 @@ export class GameView {
         const sc = urgent ? 1 + 0.12 * Math.sin(now / 90) : 1;
         P.drawBadge(ctx, tv.x, tv.y - L_OFF(tv), 8 * sc, urgent ? '#ff2d3d' : '#ff8a00', String(left));
       }
+      // Ab v0.7.5 deutlich größer und auf dunkler Scheibe, damit man sie gut sieht
       if (t.lock >= 0 && g.isLocked(t)) {
-        P.drawPadlock(ctx, tv.x, tv.y, tv.cell * 0.55);
+        const c = tv.cell;
+        P.drawIconDisc(ctx, tv.x, tv.y, c * 0.62);
+        P.drawPadlock(ctx, tv.x, tv.y + c * 0.06, c * 1.05);
         const k = this.tvs[t.lock];
-        if (k && k.state === 'lot') P.drawKey(ctx, k.x, k.y, k.cell * 0.5, '#ffc21a');
+        if (k && k.state === 'lot') {
+          P.drawIconDisc(ctx, k.x, k.y, k.cell * 0.62);
+          P.drawKey(ctx, k.x, k.y, k.cell * 1.1, '#ffc21a');
+        }
       }
     }
     void selecting;
