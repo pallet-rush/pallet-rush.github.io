@@ -26,7 +26,7 @@ const COMBO_COIN = 1;
 // Schwierigkeit: folgt dem Levelplan (js/data/levelplan.js): Das 10. Level jeder Welt
 // ist ein Boss-Level (am wenigsten Spielraum), das 6. ist knackig. Schwere Level geben mehr Münzen.
 const DIFF_MULT = { normal: 1, hard: 1.5, vhard: 2 };
-const TICKETS = { normal: 0, hard: 1, vhard: 2 };
+const TICKETS = { normal: 0, hard: 0, vhard: 1 };
 export function difficulty(n) {
   if (n >= 20 && n % 10 === 0) return 'vhard';
   if (n === 10 || (n > 10 && n % 10 === 6)) return 'hard';
@@ -429,7 +429,7 @@ function handleWon() {
   const stars = Math.max(1, 3 - (usedBoosters > 0 ? 1 : 0) - (attempt > 1 ? 1 : 0));
   rec.stars = Math.max(rec.stars || 0, stars);
   save.coins += reward;
-  // Tickets fürs Glücksrad: erster Sieg in einem schweren (1) bzw. sehr schweren (2) Level
+  // Ticket fürs Glücksrad: erster Sieg in einem sehr schweren Level (ab v0.7.7 nur dort)
   const tickets = firstWin ? TICKETS[diff] : 0;
   save.wheel.tickets += tickets;
   save.stats.won++;

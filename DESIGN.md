@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 15.11.2026 · Version 0.7.6
+Stand: 15.11.2026 · Version 0.7.7
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -208,7 +208,7 @@ Ab v0.7.2 steigen die Preise mit der Stärke des Bonus (vorher war Umsortieren m
   übrigen 21 blieben (weniger LKWs oder nicht erzeugbar). Alle 300 Level ohne Boni lösbar.
 - **Glücksrad** (ab v0.7.6, Knopf oben links im Hauptmenü): einmal am Tag gratis
   drehen, jedes weitere Mal kostet ein **Ticket**. Tickets: erster Sieg in einem
-  schweren Level +1, in einem sehr schweren +2. Felder (Gewicht in %): 20 Münzen (22),
+  sehr schweren Level +1 (ab v0.7.7; vorher schwer +1, sehr schwer +2). Felder (Gewicht in %): 20 Münzen (22),
   Extra-Rampe (10), 50 Münzen (17), Niete (20), Umsortieren (9), 100 Münzen (8),
   Kran (6), Gabelstapler (5). Noch gesperrte Boni landen im Vorrat und sind ab ihrem
   Freischalt-Level nutzbar. Ein roter Punkt (! = Gratis-Dreh, Zahl = Tickets) zeigt,
