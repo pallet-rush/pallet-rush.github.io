@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 13.11.2026 · Version 0.7.5
+Stand: 15.11.2026 · Version 0.7.6
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -199,6 +199,20 @@ Ab v0.7.2 steigen die Preise mit der Stärke des Bonus (vorher war Umsortieren m
 - **Schwere Level**: Level 10 und jedes x6-Level ab 16 sind „Schwer“ (Münzen ×1,5),
   jedes 10. Level ab 20 ist „Sehr schwer“ (×2). Kennzeichnung im Start-Banner,
   im HUD und in der Levelauswahl.
+- **Sehr schwere und schwere Level** (ab v0.7.6) noch einmal schwerer: dichterer Stau
+  (+0,04 bzw. +0,06, also mehr LKWs; Mindest-LKWs +3 bzw. +4), eine Falle mehr,
+  Gewinnquote des simulierten Spielers ×0,85 bzw. ×0,75 (`HARDER` in
+  `js/data/levelplan.js`). Ließ sich ein Level damit nicht erzeugen, gab es einen zweiten
+  Versuch ohne strengeren Testspieler (`HARDER_SOFT`). Ein neues Level ersetzt das alte nur,
+  wenn es mindestens gleich viele LKWs hat. Ergebnis: 38 von 59 schweren Leveln neu, die
+  übrigen 21 blieben (weniger LKWs oder nicht erzeugbar). Alle 300 Level ohne Boni lösbar.
+- **Glücksrad** (ab v0.7.6, Knopf oben links im Hauptmenü): einmal am Tag gratis
+  drehen, jedes weitere Mal kostet ein **Ticket**. Tickets: erster Sieg in einem
+  schweren Level +1, in einem sehr schweren +2. Felder (Gewicht in %): 20 Münzen (22),
+  Extra-Rampe (10), 50 Münzen (17), Niete (20), Umsortieren (9), 100 Münzen (8),
+  Kran (6), Gabelstapler (5). Noch gesperrte Boni landen im Vorrat und sind ab ihrem
+  Freischalt-Level nutzbar. Ein roter Punkt (! = Gratis-Dreh, Zahl = Tickets) zeigt,
+  dass gedreht werden kann. Einsatz und Gewinn werden vor der Animation gespeichert.
 - **Weiterspielen** nach „Alle Rampen belegt“: +1 Rampe aus dem Bonus-Vorrat
   (gratis) oder für 250 Münzen – so viel wie die Extra-Rampe im Bonus-Laden
   (ab v0.6.2; vorher 100–250 je nach Level, also billiger als der Bonus).
@@ -354,6 +368,18 @@ Ab v0.7.2 steigen die Preise mit der Stärke des Bonus (vorher war Umsortieren m
 - Verkehr: LKWs fahren vorwärts aus dem Stau, ordnen sich auf der Ringstraße
   ein, setzen rückwärts in ihre Bucht und fahren nach rechts ab. Vorfahrt hat,
   wer zuerst losgefahren ist; niemand fährt ineinander.
+  Stau-Schutz (ab v0.7.6): Ein LKW reiht sich hinter einem Älteren, der auf seine
+  besetzte Bucht wartet, nur ein, wenn er selbst auch noch auf eine Bucht wartet.
+  Ist seine Bucht frei, schiebt er sich vorbei. Sonst konnte sich alles verklemmen:
+  Der Wartende brauchte erst Paletten, die vorne in der Schlange für die LKWs hinter
+  ihm lagen. Notbremse: Wer 9 s blockiert steht, obwohl seine Bucht frei ist, fährt
+  vorsichtig durch. Dauertest: `tools/traffictest.js` spielt Level im Zeitraffer
+  (unsichtbare Ansicht, virtuelle Uhr) und meldet Stillstand auf der Straße.
+- Level-Start-Banner (Fix v0.7.6): Das Ausblenden bricht nicht mehr ab, wenn es
+  zweimal kurz hintereinander angestoßen wird, und die „Sehr schwer“-Animation
+  überdeckt das Ausblenden nicht mehr (das Banner blieb sonst stehen).
+- Pink (ab v0.7.6 `#ff6ad6`, Symbol ✿) ist deutlich rosa-violett und damit klar
+  von Rot (`#ff0a1e`) zu unterscheiden.
 - Die drei Ausläufe arbeiten gleichzeitig (ab v0.4.9): Jeder schickt seine Paletten der
   Reihe nach über seine eigene Rutsche, mehrere Rutschen laufen parallel.
 - Seitenregel (ab v0.6.4, Teil der Spielregeln in `js/core/model.js`): Das linke

@@ -150,7 +150,7 @@ svg { display: block; }
 }
 .menu-top {
   align-self: stretch;
-  display: flex; justify-content: flex-end; align-items: center;
+  display: flex; justify-content: space-between; align-items: center;
   min-height: 46px;
   animation: dropIn 0.6s cubic-bezier(.2,1.4,.4,1) both;
 }
@@ -1369,7 +1369,7 @@ body.booting #menu, body.booting #menu * { animation-play-state: paused !importa
   box-shadow: 0 0 0 3px #0b3f8f, 0 6px 0 3px #08306e, 0 14px 30px rgba(0,0,0,0.4), 0 0 40px 8px rgba(80,170,255,0.5);
   animation: banner-in 0.5s cubic-bezier(.2,1.5,.4,1) both;
 }
-.level-banner.out .lb-inner { animation: banner-out 0.26s ease-in forwards; }
+.level-banner.out .lb-inner { animation: banner-out 0.26s ease-in forwards !important; } /* auch bei .vhard (v0.7.6) */
 .lb-inner b {
   font-size: 40px; font-weight: 900; line-height: 1;
   letter-spacing: 0.5px;
@@ -1796,3 +1796,62 @@ body.land .duel-art svg { width: 42px; height: 42px; }
 .mp-pick .mp-num { width: 74px; text-align: center; padding: 0 6px; }
 .mp-pick .on { border-color: #1f6fe8; background: #e6f0ff; color: #1f6fe8; }
 .combo-tag { color: #ff8a00; font-weight: 800; }
+
+/* ---------- Glücksrad ---------- */
+.wheel-btn {
+  position: relative; width: 50px; height: 50px; padding: 0; border: 0; background: none; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.wheel-mini {
+  position: absolute; inset: 2px; border-radius: 50%;
+  background: conic-gradient(#ffd23a 0 45deg, #4fb3ff 0 90deg, #ff9a1f 0 135deg, #9aa7b8 0 180deg, #5ccf5a 0 225deg, #ff5a8a 0 270deg, #a66bff 0 315deg, #2ec4b6 0 360deg);
+  border: 3px solid #fff;
+  box-shadow: 0 3px 0 rgba(10,25,60,0.55), 0 6px 12px rgba(0,0,0,0.25);
+}
+.wheel-mini::after { content: ''; position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; margin: -6px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px #2a3550; }
+.wheel-btn.ready .wheel-mini { animation: wheel-idle 3s ease-in-out infinite; }
+.wheel-btn:active .wheel-mini { transform: scale(0.92); }
+@keyframes wheel-idle { 0%, 70%, 100% { transform: rotate(0); } 80% { transform: rotate(-25deg); } 90% { transform: rotate(15deg); } }
+.wheel-badge {
+  position: absolute; right: -4px; top: -4px; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px;
+  background: #ff3b30; color: #fff; font: 900 13px/22px inherit; font-family: inherit; text-align: center;
+  border: 2px solid #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+.wheel-wrap { position: relative; width: min(270px, 70vw); aspect-ratio: 1; margin: 6px auto 4px; }
+.wheel {
+  position: absolute; inset: 0; border-radius: 50%;
+  border: 6px solid #fff;
+  box-shadow: 0 0 0 4px #2a3550, 0 8px 18px rgba(0,0,0,0.3), inset 0 0 0 2px rgba(0,0,0,0.12);
+}
+.wheel .ws {
+  position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  transform: rotate(var(--a)) translateY(calc(min(270px, 70vw) * -0.33));
+  color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,0.35);
+}
+.wheel .ws b { font-size: 17px; font-weight: 900; line-height: 1; }
+.wheel .ws .coin { width: 22px; height: 22px; margin-bottom: 1px; }
+.wheel .ws img { width: 40px; height: 40px; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.35)); }
+.wheel .ws .ws-none { font-size: 28px; }
+.wheel-ptr {
+  position: absolute; left: 50%; top: -14px; z-index: 2; width: 0; height: 0; margin-left: -15px;
+  border-left: 15px solid transparent; border-right: 15px solid transparent; border-top: 30px solid #ff3b30;
+  filter: drop-shadow(0 2px 0 #2a3550) drop-shadow(0 3px 3px rgba(0,0,0,0.3));
+}
+.wheel-hub {
+  position: absolute; left: 50%; top: 50%; width: 38px; height: 38px; margin: -19px; z-index: 2; border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #fff, #cfd8e6); box-shadow: 0 0 0 4px #2a3550, 0 3px 6px rgba(0,0,0,0.3);
+}
+.panel .wheel-info { margin: 8px 4px 0; font-size: 14px; }
+.panel .wheel-info small { font-size: 12px; opacity: 0.85; }
+.wheel-prize { display: inline-block; margin-bottom: 4px; font-size: 20px; color: #1f9d3a; animation: popSwap 0.4s cubic-bezier(.2,1.8,.4,1); }
+.wheel-prize.none { color: #8a94a6; }
+.ticket {
+  display: inline-block; width: 22px; height: 15px; vertical-align: -2px; margin-right: 3px; border-radius: 3px;
+  background: radial-gradient(circle at 0 50%, transparent 3.5px, #ffb300 4px) left / 51% 100% no-repeat,
+              radial-gradient(circle at 100% 50%, transparent 3.5px, #ffb300 4px) right / 51% 100% no-repeat;
+  box-shadow: inset 0 0 0 1.5px rgba(150,80,0,0.35);
+}
+.btn .ticket { margin-left: 6px; }
+.ticket-gain { margin-top: 8px; font-weight: 900; color: #b36b00; font-size: 16px; }
+.btn:disabled { opacity: 0.5; filter: grayscale(0.6); pointer-events: none; }

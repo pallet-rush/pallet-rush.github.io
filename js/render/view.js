@@ -867,6 +867,7 @@ export class GameView {
     // Nur bei einer echten Verklemmung (Kreis, oder ein Jüngerer blockiert einen
     // Älteren, dessen Paletten zuerst dran sind) darf sich einer vorbeischieben.
     const holding = (o) => o.phase === 'approach' && o.limit < o.path.length && o.s >= o.limit - 1;
+    const waitsForBay = (o) => o.phase === 'approach' && this.bayOcc[o.bay] !== o;
     const legit = (tv, seen = new Set()) => {
       if (seen.has(tv)) return false;
       seen.add(tv);
@@ -874,7 +875,11 @@ export class GameView {
         if (o.state === 'dock' || o.state === 'crane') return true;
         if (!movers.includes(o)) continue;
         if (o.v > 0.02) return true;
-        if (holding(o) && o.order < tv.order) return true;
+        // Hinter einem Älteren, der auf seine Bucht wartet, nur dann anstellen, wenn ich
+        // selbst auch noch auf meine Bucht warte. Ist meine Bucht schon frei, wäre das
+        // Warten eine Verklemmung (ab v0.7.6): Der Wartende braucht ggf. erst Paletten,
+        // die vorne in der Schlange für mich liegen.
+        if (holding(o) && o.order < tv.order && waitsForBay(tv)) return true;
         if (legit(o, seen)) return true;
       }
       return false;
@@ -891,6 +896,12 @@ export class GameView {
         tv.stuck = (tv.stuck || 0) + dt;
         if (tv.stuck > 2200) { stop = false; tv.ghost = tv.s + 70; tv.stuck = 0; }
       } else if (!stop || tv.v > 0.05) tv.stuck = 0;
+      // Notbremse gegen jede Art von Dauerstau: Wer 9 s lang blockiert steht, obwohl
+      // seine Bucht frei ist (oder er abfährt), schiebt sich vorsichtig durch.
+      if (stop && tv.v < 0.05 && !waitsForBay(tv)) {
+        tv.jam = (tv.jam || 0) + dt;
+        if (tv.jam > 9000) { stop = false; tv.ghost = tv.s + 90; tv.jam = 0; }
+      } else tv.jam = 0;
       const vmax = tv.phase === 'reverse' ? VREV : VMAX;
       const remain = tv.limit - tv.s;
       const brake = Math.sqrt(2 * ACC * Math.max(0, remain)) + (remain > 0.5 ? 0.02 : 0);
@@ -1976,7 +1987,7 @@ export class GameView {
     this.shakeT = now; this.shakeA = a;
   }
   burst(x, y, n, now, cols) {
-    const pal = cols && cols.length ? cols : ['#ff0a1e', '#ffe000', '#14d200', '#0a5cff', '#ff0aa0', '#00c8ff'];
+    const pal = cols && cols.length ? cols : ['#ff0a1e', '#ffe000', '#14d200', '#0a5cff', '#ff6ad6', '#00c8ff'];
     for (let i = 0; i < n; i++) {
       const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.6, v = 0.06 + Math.random() * 0.1;
       this.fx.push({ type: 'conf', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t0: now, dur: 900 + Math.random() * 500,
@@ -1989,7 +2000,7 @@ export class GameView {
     const top = this.L ? this.L.T : 0;
     for (let i = 0; i < 90; i++) {
       this.fx.push({ type: 'conf', x: Math.random() * this.VW, y: top - 20 - Math.random() * 120, vx: (Math.random() - 0.5) * 0.05, vy: 0.05 + Math.random() * 0.08,
-        t0: now + Math.random() * 400, dur: 2600, c: ['#ff0a1e', '#ffe000', '#14d200', '#0a5cff', '#ff0aa0', '#00c8ff', '#9410ff', '#ffffff'][i % 8], r: Math.random() * 6, s: 3 + Math.random() * 3 });
+        t0: now + Math.random() * 400, dur: 2600, c: ['#ff0a1e', '#ffe000', '#14d200', '#0a5cff', '#ff6ad6', '#00c8ff', '#9410ff', '#ffffff'][i % 8], r: Math.random() * 6, s: 3 + Math.random() * 3 });
     }
     this.shake(now, 2.5);
   }

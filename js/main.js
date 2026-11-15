@@ -26,6 +26,7 @@ const COMBO_COIN = 1;
 // Schwierigkeit: folgt dem Levelplan (js/data/levelplan.js): Das 10. Level jeder Welt
 // ist ein Boss-Level (am wenigsten Spielraum), das 6. ist knackig. Schwere Level geben mehr Münzen.
 const DIFF_MULT = { normal: 1, hard: 1.5, vhard: 2 };
+const TICKETS = { normal: 0, hard: 1, vhard: 2 };
 export function difficulty(n) {
   if (n >= 20 && n % 10 === 0) return 'vhard';
   if (n === 10 || (n > 10 && n % 10 === 6)) return 'hard';
@@ -176,6 +177,7 @@ function refreshMenu() {
   $('#menu-coins').textContent = save.coins;
   $('#play-level').textContent = `${t('level')} ${Math.min(save.level, LEVELS.length)}`;
   $('#version').textContent = 'v' + VERSION;
+  refreshWheelBadge();
 }
 
 // ---------- Level ----------
@@ -260,10 +262,13 @@ function showBanner(n) {
   bannerTimer = setTimeout(hideBanner, d === 'normal' ? 1500 : 2200);
   if (d !== 'normal') sfx.warn();
 }
+// Ab v0.7.6: Ein zweiter Aufruf während des Ausblendens bricht das Verstecken nicht
+// mehr ab (vorher blieb das Banner dann stehen, v. a. bei schweren Leveln).
 function hideBanner() {
-  clearTimeout(bannerTimer);
   const el = $('#level-banner');
-  if (el.classList.contains('hidden') || el.classList.contains('out')) return;
+  if (el.classList.contains('hidden')) { clearTimeout(bannerTimer); return; }
+  if (el.classList.contains('out')) return; // Verstecken läuft schon
+  clearTimeout(bannerTimer);
   el.classList.add('out');
   bannerTimer = setTimeout(() => el.classList.add('hidden'), 260);
 }
@@ -424,6 +429,9 @@ function handleWon() {
   const stars = Math.max(1, 3 - (usedBoosters > 0 ? 1 : 0) - (attempt > 1 ? 1 : 0));
   rec.stars = Math.max(rec.stars || 0, stars);
   save.coins += reward;
+  // Tickets fürs Glücksrad: erster Sieg in einem schweren (1) bzw. sehr schweren (2) Level
+  const tickets = firstWin ? TICKETS[diff] : 0;
+  save.wheel.tickets += tickets;
   save.stats.won++;
   if (levelNo >= save.level) save.level = levelNo + 1;
   save.maxLevel = Math.max(save.maxLevel, levelNo + 1);
@@ -437,7 +445,7 @@ function handleWon() {
   showDialog({
     title: t('won'),
     cls: 'win',
-    html: `<div class="win-stars">${[1, 2, 3].map((k) => `<span class="star ${k <= stars ? 'on' : ''}" style="animation-delay:${0.25 + k * 0.28}s"></span>`).join('')}</div><img class="result-art" src="assets/win.png" alt=""><p>${stars < 3 ? t(usedBoosters > 0 ? 'starHintBooster' : 'starHintRetry') : t('wonText')}</p><div class="reward"><span class="coin"></span><span class="reward-num">+0</span>${firstTry ? ` <small>${t('firstTry')}</small>` : ''}${combos ? ` <small class="combo-tag">${fill(t('comboCoins'), { n: combos })}</small>` : ''}${diff !== 'normal' ? ` <small class="diff-tag ${diff}">${t(diff)} ×${DIFF_MULT[diff]}</small>` : ''}</div>`,
+    html: `<div class="win-stars">${[1, 2, 3].map((k) => `<span class="star ${k <= stars ? 'on' : ''}" style="animation-delay:${0.25 + k * 0.28}s"></span>`).join('')}</div><img class="result-art" src="assets/win.png" alt=""><p>${stars < 3 ? t(usedBoosters > 0 ? 'starHintBooster' : 'starHintRetry') : t('wonText')}</p><div class="reward"><span class="coin"></span><span class="reward-num">+0</span>${firstTry ? ` <small>${t('firstTry')}</small>` : ''}${combos ? ` <small class="combo-tag">${fill(t('comboCoins'), { n: combos })}</small>` : ''}${diff !== 'normal' ? ` <small class="diff-tag ${diff}">${t(diff)} ×${DIFF_MULT[diff]}</small>` : ''}</div>${tickets ? `<div class="ticket-gain"><span class="ticket"></span>+${tickets} ${t(tickets > 1 ? 'ticketsWord' : 'ticketWord')}</div>` : ''}`,
     actions: [
       { label: t('next'), cls: 'primary pulse', fn: () => startLevel(levelNo + 1) },
       { label: t('menu'), fn: showMenu },
@@ -814,6 +822,7 @@ $('#btn-play').onclick = () => { unlockAudio(); goFullscreen(); endDuel(); start
 $('#btn-duel').onclick = () => { unlockAudio(); showDuelMenu(); };
 $('#btn-levels').onclick = () => { unlockAudio(); showLevels(); };
 $('#btn-settings').onclick = () => { unlockAudio(); showSettings(); };
+$('#btn-wheel').onclick = () => { unlockAudio(); showWheel(); };
 $('#btn-pause').onclick = () => showPause();
 $('#btn-restart').onclick = () => restartLevel();
 // Ein zentraler UI-Klickton für alle Buttons (Menü, Dialoge, Pause, Levelauswahl, Boni)
@@ -930,6 +939,117 @@ function checkDaily() {
       coinBurst($('#menu-coins'));
     } }],
   });
+}
+
+// ---------- Glücksrad ----------
+// Einmal am Tag gratis drehen; jedes weitere Mal kostet ein Ticket (gibt es für den
+// ersten Sieg in schweren Leveln). Gewinne: Münzen, Boni oder eine Niete.
+const WHEEL = [
+  { k: 'coins', n: 20, w: 22, c: '#ffd23a' },
+  { k: 'ramp', w: 10, c: '#4fb3ff' },
+  { k: 'coins', n: 50, w: 17, c: '#ff9a1f' },
+  { k: 'none', w: 20, c: '#9aa7b8' },
+  { k: 'shuffle', w: 9, c: '#5ccf5a' },
+  { k: 'coins', n: 100, w: 8, c: '#ff5a8a' },
+  { k: 'crane', w: 6, c: '#a66bff' },
+  { k: 'forklift', w: 5, c: '#2ec4b6' },
+];
+let wheelRot = 0;
+let wheelBusy = false;
+function wheelFree() { return save.wheel.last !== dayKey(); }
+function refreshWheelBadge() {
+  const b = $('#wheel-badge');
+  if (!b) return;
+  const n = wheelFree() ? '!' : save.wheel.tickets > 0 ? String(save.wheel.tickets) : '';
+  b.textContent = n;
+  b.classList.toggle('hidden', !n);
+  $('#btn-wheel').classList.toggle('ready', !!n);
+}
+function wheelPick() {
+  const sum = WHEEL.reduce((a, s) => a + s.w, 0);
+  let r = Math.random() * sum;
+  for (let i = 0; i < WHEEL.length; i++) { r -= WHEEL[i].w; if (r < 0) return i; }
+  return 0;
+}
+function wheelLabel(s) {
+  if (s.k === 'coins') return `<span class="coin"></span><b>${s.n}</b>`;
+  if (s.k === 'none') return '<b class="ws-none">✕</b>';
+  return `<img src="assets/boosters/${s.k}.png" alt="" draggable="false">`;
+}
+function prizeText(s) {
+  if (s.k === 'coins') return `+${s.n} ${t('coinsWord')}`;
+  if (s.k === 'none') return t('wheelNone');
+  return `+1 ${t('booster_' + s.k)}`;
+}
+function showWheel() {
+  if (wheelBusy) return;
+  const seg = 360 / WHEEL.length;
+  const grad = WHEEL.map((s, i) => `${s.c} ${i * seg}deg ${(i + 1) * seg}deg`).join(',');
+  const labels = WHEEL.map((s, i) => `<span class="ws" style="--a:${i * seg + seg / 2}deg">${wheelLabel(s)}</span>`).join('');
+  showDialog({
+    title: t('wheelTitle'),
+    cls: 'wheel-dlg',
+    html: `<div class="wheel-wrap"><i class="wheel-ptr"></i><div class="wheel" id="wheel" style="background:conic-gradient(${grad});transform:rotate(${wheelRot}deg)">${labels}</div><i class="wheel-hub"></i></div>
+      <p class="wheel-info" id="wheel-info"></p>`,
+    actions: [
+      { label: t('wheelSpin'), cls: 'primary wheel-spin', fn: spinWheel, keep: true },
+      { label: t('close'), fn: () => { if (!wheelBusy) { hideModal(); refreshMenu(); } }, keep: true },
+    ],
+  });
+  updateWheelUi();
+}
+function updateWheelUi(prize = '') {
+  const btn = document.querySelector('#modal-panel .wheel-spin');
+  const info = $('#wheel-info');
+  const free = wheelFree();
+  const tk = save.wheel.tickets;
+  if (info) info.innerHTML = `${prize}${free ? t('wheelFree') : t('wheelFreeTomorrow')}<br><span class="ticket"></span> ${tk} ${t(tk === 1 ? 'ticketWord' : 'ticketsWord')}<br><small>${t('wheelTicketHint')}</small>`;
+  if (btn) {
+    btn.disabled = wheelBusy || (!free && tk <= 0);
+    btn.innerHTML = free ? t('wheelSpinFree') : `${t('wheelSpin')} <span class="ticket"></span>1`;
+  }
+}
+function spinWheel() {
+  if (wheelBusy) return;
+  const free = wheelFree();
+  if (!free && save.wheel.tickets <= 0) return;
+  // Einsatz und Gewinn sofort speichern (kein doppeltes Drehen durch Neuladen)
+  if (free) save.wheel.last = dayKey(); else save.wheel.tickets--;
+  save.wheel.spins++;
+  const idx = wheelPick();
+  const s = WHEEL[idx];
+  const coinsBefore = save.coins;
+  if (s.k === 'coins') save.coins += s.n;
+  else if (s.k !== 'none') save.boosters[s.k].count++;
+  writeSave(save);
+  wheelBusy = true;
+  updateWheelUi();
+  const seg = 360 / WHEEL.length;
+  const jitter = (Math.random() - 0.5) * seg * 0.7;
+  const base = Math.ceil(wheelRot / 360) * 360;
+  wheelRot = base + 360 * 5 + (360 - (idx * seg + seg / 2)) + jitter;
+  const el = $('#wheel');
+  el.style.transition = 'transform 4.2s cubic-bezier(.12,.8,.22,1)';
+  el.style.transform = `rotate(${wheelRot}deg)`;
+  // Ticken während des Drehens, immer langsamer
+  let tick = 0;
+  let gap = 55;
+  const tickFn = () => {
+    if (!wheelBusy || ++tick > 28) return;
+    sfx.tap();
+    gap *= 1.09;
+    setTimeout(tickFn, gap);
+  };
+  tickFn();
+  setTimeout(() => {
+    wheelBusy = false;
+    if (s.k === 'none') sfx.noRamp(); else { sfx.coin(); vibrate(20); }
+    const def = BOOSTERS.find((b) => b.key === s.k);
+    const lockNote = def && !save.boosters[s.k].unlocked ? ` <small>(${t('locked')} ${def.unlock})</small>` : '';
+    updateWheelUi(`<b class="wheel-prize ${s.k === 'none' ? 'none' : ''}">${prizeText(s)}${lockNote}</b><br>`);
+    refreshWheelBadge();
+    if (s.k === 'coins') countUp($('#menu-coins'), coinsBefore, save.coins, 700);
+  }, 4300);
 }
 
 // Münzen fliegen von der Mitte zur Münzanzeige

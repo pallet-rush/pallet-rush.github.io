@@ -232,6 +232,32 @@ for (const n of RELAX2) {
   if (p.gateQ) p.gateQ = [2, 3];
 }
 
+// Ab v0.7.6: Schwere und sehr schwere Level (wie difficulty() in js/main.js) legen noch einmal zu:
+// dichterer Stau (mehr LKWs), eine Falle mehr, der simulierte Spieler gewinnt seltener.
+export function planDifficulty(n) {
+  if (n >= 20 && n % 10 === 0) return 'vhard';
+  if (n === 10 || (n > 10 && n % 10 === 6)) return 'hard';
+  return 'normal';
+}
+export const HARDER = new Set();
+export const HARDER_SOFT = new Set([20, 26, 40, 50, 56, 66, 90, 96, 106, 110, 136, 140, 150, 170, 180, 210, 220, 240, 246, 250, 266, 280, 300]);
+for (let n = 10; n <= LEVEL_PLAN.length; n++) {
+  const d = planDifficulty(n);
+  if (d === 'normal') continue;
+  HARDER.add(n);
+  const p = LEVEL_PLAN[n - 1];
+  const vh = d === 'vhard';
+  if (p.minTrucks) p.minTrucks = Math.min(p.maxTrucks || 34, p.minTrucks + (vh ? 4 : 3));
+  p.traps = Math.min(7, (p.traps || 0) + 1);
+  // Dichterer Stau = mehr LKWs auf derselben Fläche (die Zahl ergibt sich aus Fläche × Dichte)
+  p.density = Math.min(0.9, (p.density || 0.7) + (vh ? 0.06 : 0.04));
+  p.mix = { ...p.mix, L: (p.mix.L || 1) + 0.2 };
+  // Zweiter Versuch (HARDER_SOFT): Gewinnquote des simulierten Spielers bleibt wie vorher
+  if (HARDER_SOFT.has(n)) continue;
+  if (p.human != null) p.human = Math.max(0.04, p.human * (vh ? 0.75 : 0.85));
+  if (p.humanLo) p.humanLo = Math.max(0, p.humanLo - 0.02);
+}
+
 // Welt-Infos (Level-Nummer, an der die Mechanik eingeführt wird)
 export const WORLDS = [
   { from: 1, mech: null },

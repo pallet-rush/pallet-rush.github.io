@@ -43,7 +43,7 @@ export const COLORS = [
   { key: 'purple', hex: '#9410ff', light: '#b85cff', dark: '#6000cc', symbol: '◆' },
   { key: 'orange', hex: '#ff6a00', light: '#ff9a40', dark: '#d04800', symbol: '✚' },
   { key: 'cyan',   hex: '#00c8ff', light: '#55dcff', dark: '#008cc8', symbol: '♥' },
-  { key: 'pink',   hex: '#ff0aa0', light: '#ff5cc4', dark: '#c4007a', symbol: '✿' },
+  { key: 'pink',   hex: '#ff6ad6', light: '#ffaeee', dark: '#d42aa6', symbol: '✿' },
 ];
 
 // Zustände eines LKWs.
