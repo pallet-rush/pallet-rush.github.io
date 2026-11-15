@@ -15,8 +15,14 @@
 //       r Eilauftrag: muss spätestens mit Zug r aus dem Hof sein,
 //       k Kette: gesperrt, bis LKW Nr. k den Hof verlassen hat,
 //       tt=1 steht auf einer Drehscheibe (dreht sich nach jedem Zug um 90°)
+//       v Konvoi (ab v0.8.0): Partner-LKW, beide fahren nur gemeinsam los (2 Rampen)
+//       f Kühl-LKW (ab v0.8.0): muss spätestens f Züge nach dem Andocken voll sein
+//       s X = Sondertransport (schwarzer Tieflader, Farbe 8 = Kunstwerke)
 //   gates: [{ x, y, d, q: [{ s, c, c2, h }] }]   Tore mit wartenden LKWs
 //   barriers: [{ cells: [[x,y],...], n }]         Schranke öffnet nach n Abfahrten
+//   lights: [{ x, y, p }]   Ampel (ab v0.8.0): grün, wenn (Züge + p) gerade ist,
+//                          sonst rot (Hindernis). Schaltet mit jedem Zug um.
+//   time                   Zeitlimit in Sekunden (ab v0.8.0, nur Darstellung/Spielablauf)
 //   supply: "0120ab..."    Paletten-Schlange in fester Reihenfolge:
 //                          Ziffer = Palette, Buchstabe = Karton (Farbe verdeckt)
 //   sol: [ids]             (optional) eine Lösung, vom Generator mitgeliefert
@@ -66,6 +72,7 @@ export class Game {
         comps: makeComps(t), hidden: !!t.h, state: LOT, ramp: -1,
         rush: t.r || 0, lock: t.k ?? -1, tt: !!t.tt && !free, gate: -1,
         free, fa: free ? (t.a * Math.PI) / 180 : 0,
+        pair: t.v ?? -1, cool: t.f || 0, dm: -1,
       };
       if (free) o.rc = rasterCells(truckPoly(t), this.w, this.h);
       return o;
@@ -79,13 +86,14 @@ export class Game {
         this.trucks.push({
           id, x: g.x + dx * len, y: g.y + dy * len, dir: g.d, size: q.s, len,
           comps: makeComps(q), hidden: !!q.h, state: WAIT, ramp: -1,
-          rush: 0, lock: -1, tt: false, gate: gi,
+          rush: 0, lock: -1, tt: false, gate: gi, pair: -1, cool: 0, dm: -1,
         });
         return id;
       });
       return { x: g.x, y: g.y, d: g.d, queue, next: 0 };
     });
     this.barriers = (level.barriers || []).map((b) => ({ cells: b.cells, n: b.n, open: false }));
+    this.lights = (level.lights || []).map((l) => ({ x: l.x, y: l.y, p: l.p || 0 }));
     this.ramps = new Array(level.ramps + (opts.extraRamps || 0)).fill(-1);
     this.supply = parseSupply(level.supply);
     this.si = 0;        // erste Palette des vordersten noch nicht verladenen Blocks
@@ -108,6 +116,7 @@ export class Game {
       }
     }
     for (const b of this.barriers) for (const [x, y] of b.cells) this.grid[y * this.w + x] = OBST;
+    for (const l of this.lights) this.grid[l.y * this.w + l.x] = OBST;
     this.blk = this._blockLists();
     const ev = [];
     this._spawn(ev);
@@ -140,6 +149,7 @@ export class Game {
     }
     this.gates.forEach((g) => obs.push({ j: -1, b: -1, poly: gatePoly(g), cx: g.x + 0.5, cy: g.y + 0.5, r: 2 }));
     this.barriers.forEach((b, bi) => { for (const [x, y] of b.cells) obs.push({ j: -1, b: bi, poly: cellPoly(x, y), cx: x + 0.5, cy: y + 0.5, r: 1 }); });
+    this.lights.forEach((l, li) => obs.push({ j: -1, b: -1, l: li, poly: cellPoly(l.x, l.y), cx: l.x + 0.5, cy: l.y + 0.5, r: 1 }));
     const lists = [];
     for (const t of this.trucks) {
       const dirs = t.tt ? CLOCKWISE : [t.dir];
@@ -153,7 +163,7 @@ export class Game {
           const ox = o.cx - p.cx, oy = o.cy - p.cy;
           if (ox * c + oy * s < -o.r || Math.abs(-ox * s + oy * c) > BODY_W / 2 + o.r) continue;
           const dist = sweepDist(p.cx, p.cy, p.a, BODY_W, o.poly);
-          if (dist !== null) out.push({ d: dist, j: o.j, jd: o.jd, b: o.b ?? -1 });
+          if (dist !== null) out.push({ d: dist, j: o.j, jd: o.jd, b: o.b ?? -1, l: o.l ?? -1 });
         }
         out.sort((a, b) => a.d - b.d);
         per[d] = out;
@@ -174,6 +184,7 @@ export class Game {
     g.trucks = this.trucks.map((t) => ({ ...t, comps: t.comps.map((c) => ({ ...c })) }));
     g.gates = this.gates.map((x) => ({ ...x }));
     g.barriers = this.barriers.map((b) => ({ ...b }));
+    g.lights = this.lights;
     g.ramps = this.ramps.slice();
     g.supply = this.supply; // wird nur von Boni verändert, dann vorher kopiert
     g.si = this.si;
@@ -207,11 +218,21 @@ export class Game {
     return this.grid[y * this.w + x];
   }
 
+  // Ampel i grün? Sie schaltet mit jedem Zug um.
+  lightGreen(i) {
+    return ((this.moves + this.lights[i].p) & 1) === 0;
+  }
+
   // Erstes Hindernis auf dem Weg nach vorne (LKW-Nummer oder OBST), sonst EMPTY.
-  blockerOf(t) {
+  // ign: dieser LKW zählt nicht (Konvoi-Partner fährt gleichzeitig los).
+  // allGreen: Ampeln als grün ansehen (um „nur die Ampel ist rot“ zu erkennen).
+  blockerOf(t, ign = -1, allGreen = false) {
     const list = t.tt ? this.blk[t.id][t.dir] : this.blk[t.id];
     for (const e of list) {
-      if (e.j >= 0) {
+      if (e.l >= 0) {
+        if (!allGreen && !this.lightGreen(e.l)) return OBST;
+      } else if (e.j >= 0) {
+        if (e.j === ign) continue;
         const o = this.trucks[e.j];
         if (o.state === LOT && (e.jd === undefined || o.dir === e.jd)) return e.j;
       } else if (e.b >= 0) {
@@ -227,8 +248,32 @@ export class Game {
     return k === LOT || k === WAIT;
   }
 
+  // Konvoi-Partner, solange beide noch im Hof stehen (sonst null)
+  partner(t) {
+    if (t.pair < 0) return null;
+    const u = this.trucks[t.pair];
+    return u && u.state === LOT ? u : null;
+  }
+
   canExit(t) {
-    return t.state === LOT && !this.isLocked(t) && this.blockerOf(t) === EMPTY;
+    if (t.state !== LOT || this.isLocked(t)) return false;
+    const u = this.partner(t);
+    if (!u) return this.blockerOf(t) === EMPTY;
+    return !this.isLocked(u) && this.blockerOf(t, u.id) === EMPTY && this.blockerOf(u, t.id) === EMPTY;
+  }
+
+  // Wäre der LKW frei, wenn alle Ampeln grün wären? (für die Meldung „Ampel rot“)
+  onlyRed(t) {
+    if (!this.lights.length) return false;
+    const u = this.partner(t);
+    const ign = u ? u.id : -1;
+    const free = (a, i) => this.blockerOf(a, i, true) === EMPTY;
+    return free(t, ign) && (!u || free(u, t.id));
+  }
+
+  // Kühl-LKW an der Rampe: wie viele Züge darf man noch machen?
+  coolLeft(t) {
+    return t.cool && t.state === RAMP ? t.cool - (this.moves - t.dm) : 0;
   }
 
   freeRampCount() {
@@ -251,7 +296,8 @@ export class Game {
     if (this.status !== 'playing') return [];
     if (!this.sandbox && this.ramps.indexOf(-1) < 0) return [];
     const out = [];
-    for (const t of this.trucks) if (this.canExit(t)) out.push(t.id);
+    const two = this.sandbox || this.freeRampCount() >= 2;
+    for (const t of this.trucks) if (this.canExit(t) && (two || !this.partner(t))) out.push(t.id);
     return out;
   }
 
@@ -263,12 +309,21 @@ export class Game {
     const t = this.trucks[id];
     if (!t || t.state !== LOT) return { ok: false, reason: 'invalid' };
     if (this.isLocked(t)) return { ok: false, reason: 'locked', key: t.lock };
-    const b = this.blockerOf(t);
-    if (b !== EMPTY) return { ok: false, reason: 'blocked', blocker: b };
+    const u = this.partner(t);
+    if (u && this.isLocked(u)) return { ok: false, reason: 'locked', key: u.lock, id: u.id };
+    const red = this.onlyRed(t);
+    const b = this.blockerOf(t, u ? u.id : -1);
+    if (b !== EMPTY) return { ok: false, reason: red ? 'red' : 'blocked', blocker: b };
+    if (u) {
+      const b2 = this.blockerOf(u, t.id);
+      if (b2 !== EMPTY) return { ok: false, reason: red ? 'red' : 'blocked', blocker: b2, id: u.id, convoy: true };
+    }
     if (this.sandbox) {
-      this._removeFromLot(t);
-      t.state = GONE;
-      this.departed++;
+      for (const x of u ? [t, u] : [t]) {
+        this._removeFromLot(x);
+        x.state = GONE;
+        this.departed++;
+      }
       this.moves++;
       const ev = [];
       this._afterLotChange(ev);
@@ -276,6 +331,17 @@ export class Game {
     }
     const r = this.ramps.indexOf(-1);
     if (r < 0) return { ok: false, reason: 'noRamp' };
+    if (u) {
+      const r2 = this.ramps.indexOf(-1, r + 1);
+      if (r2 < 0) return { ok: false, reason: 'noRamp2' };
+      const ev = [];
+      this._sendToRamp(t, r, ev, false, true);
+      this._sendToRamp(u, r2, ev, false, true);
+      this.moves++;
+      t.dm = u.dm = this.moves;
+      this._afterLotChange(ev);
+      return { ok: true, events: ev };
+    }
     const ev = [];
     this._sendToRamp(t, r, ev, false);
     return { ok: true, events: ev };
@@ -297,6 +363,8 @@ export class Game {
     const r = this.ramps.indexOf(-1);
     if (r < 0) return null;
     const ev = [];
+    // Kran hebt nur diesen LKW: der Konvoi löst sich
+    if (t.pair >= 0) { const u = this.trucks[t.pair]; u.pair = -1; t.pair = -1; ev.push({ type: 'unpair', id: t.id, other: u.id }); }
     this._sendToRamp(t, r, ev, true);
     return ev;
   }
@@ -391,14 +459,16 @@ export class Game {
     }
   }
 
-  _sendToRamp(t, r, ev, crane) {
+  _sendToRamp(t, r, ev, crane, convoy = false) {
     this._removeFromLot(t);
     t.state = RAMP;
     t.ramp = r;
     t.hidden = false;
     this.ramps[r] = t.id;
+    ev.push({ type: 'exit', id: t.id, ramp: r, crane, convoy });
+    if (convoy) return; // tap() zählt den Zug einmal für beide
     this.moves++;
-    ev.push({ type: 'exit', id: t.id, ramp: r, crane });
+    t.dm = this.moves;
     this._afterLotChange(ev);
   }
 
@@ -430,6 +500,11 @@ export class Game {
       if (t.rush && (t.state === LOT || t.state === WAIT) && this.moves >= t.rush) {
         this.status = 'lost';
         ev.push({ type: 'lost', reason: 'rush', id: t.id });
+        return true;
+      }
+      if (t.cool && t.state === RAMP && this.moves - t.dm > t.cool) {
+        this.status = 'lost';
+        ev.push({ type: 'lost', reason: 'cool', id: t.id });
         return true;
       }
     }
@@ -645,7 +720,10 @@ export class Game {
     rs.sort();
     let u = '';
     for (let b = this.si / BLOCK, n = b + 12; b < n; b++) u += this.used[b] ? 1 : 0;
-    return s + '|' + rs.join(';') + '|' + this.si + u + '|' + this.ramps.length + '|' + this.slot.L + ',' + this.slot.R + ',' + this.slot.C;
+    let x = '';
+    if (this.lights.length) x += '|' + (this.moves & 1);
+    for (const t of this.trucks) if (t.cool && t.state === RAMP) x += '|' + t.id + 'c' + (this.moves - t.dm);
+    return s + '|' + rs.join(';') + '|' + this.si + u + '|' + this.ramps.length + '|' + this.slot.L + ',' + this.slot.R + ',' + this.slot.C + x;
   }
 }
 
@@ -684,6 +762,11 @@ export function validateLevel(level) {
     for (let k = 0; k < sz.len; k++) occupy(t.x - dx * k, t.y - dy * k, `LKW ${i}`);
     if (t.k !== undefined && (t.k < 0 || t.k >= level.trucks.length || t.k === i)) errors.push(`LKW ${i}: ungültige Kette`);
   });
+  level.trucks.forEach((t, i) => {
+    if (t.v !== undefined && (level.trucks[t.v]?.v !== i || t.v === i)) errors.push(`LKW ${i}: ungültiger Konvoi`);
+    if ((t.s === 'X') !== (t.c === 8) && !(t.s === 'T')) errors.push(`LKW ${i}: Sondertransport/Kunstwerk passt nicht`);
+  });
+  (level.lights || []).forEach((l, li) => occupy(l.x, l.y, `Ampel ${li}`));
   (level.gates || []).forEach((g, gi) => {
     occupy(g.x, g.y, `Tor ${gi}`);
     g.q.forEach(addNeed);
@@ -691,6 +774,7 @@ export function validateLevel(level) {
   (level.barriers || []).forEach((b, bi) => b.cells.forEach(([x, y]) => occupy(x, y, `Schranke ${bi}`)));
   (level.gates || []).forEach((g, gi) => polys.push({ P: gatePoly(g), what: `Tor ${gi}` }));
   (level.barriers || []).forEach((b, bi) => b.cells.forEach(([x, y]) => polys.push({ P: cellPoly(x, y), what: `Schranke ${bi}` })));
+  (level.lights || []).forEach((l, li) => polys.push({ P: cellPoly(l.x, l.y), what: `Ampel ${li}` }));
   for (let i = 0; i < polys.length; i++) {
     for (let k = i + 1; k < polys.length; k++) {
       const A = polys[i], B = polys[k];

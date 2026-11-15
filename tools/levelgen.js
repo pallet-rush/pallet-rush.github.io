@@ -18,7 +18,13 @@ function mechs(lv) {
   if (lv.trucks.some((t) => t.r)) m.push('Eil');
   if (lv.trucks.some((t) => t.s === 'T')) m.push('Anh.');
   if (lv.trucks.some((t) => t.k !== undefined)) m.push('Kette');
-  if (/[a-h]/.test(lv.supply)) m.push('Karton');
+  if (/[a-i]/.test(lv.supply)) m.push('Karton');
+  if (lv.trucks.some((t) => t.s === 'X')) m.push('Sonder');
+  if (lv.lights) m.push('Ampel');
+  if (lv.trucks.some((t) => t.v !== undefined)) m.push('Konvoi');
+  if (lv.trucks.some((t) => t.f)) m.push('Kühl');
+  if (lv.time) m.push('Zeit ' + lv.time + 's');
+  if (lv.ramps !== 4) m.push(lv.ramps + ' Rampen');
   if (lv.trucks.some((t) => t.tt)) m.push('Dreh');
   return m.join(' ');
 }
@@ -70,7 +76,7 @@ async function generate(from = 1, to = LEVEL_PLAN.length) {
 }
 
 // Wie generate(), aber parallel in Web Workern (ein Level pro Worker gleichzeitig).
-async function generateParallel(from = 1, to = LEVEL_PLAN.length, workers = 16, maxTries) {
+async function generateParallel(from = 1, to = LEVEL_PLAN.length, workers = 16, maxTries, maxStage) {
   tbody.innerHTML = '';
   $('#log').textContent = '';
   // from als Liste von Level-Nummern: nur diese neu erzeugen, übrige Ergebnisse im Speicher behalten
@@ -87,7 +93,7 @@ async function generateParallel(from = 1, to = LEVEL_PLAN.length, workers = 16, 
     const next = () => {
       const i = todo.shift();
       if (i === undefined) { wk.terminate(); resolve(); return; }
-      wk.postMessage({ i, maxTries });
+      wk.postMessage({ i, maxTries, maxStage });
     };
     wk.onmessage = ({ data: { i, res, ms } }) => {
       done++;

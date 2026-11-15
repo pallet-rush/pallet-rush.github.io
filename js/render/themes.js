@@ -1,7 +1,8 @@
 // Optik je Welt (ab v0.6.5): Boden, Betonfläche, Beete, Pflanzen und Tageszeit.
 // Welten 1–10 haben je ein eigenes Thema passend zum Namen; Welten 11–15 nutzen
 // ausgewählte Themen in Abendstimmung bzw. bei Nacht (mit leuchtenden
-// Laternen). LKWs, Paletten und Bänder werden nie eingefärbt, damit die Farben
+// Laternen). Ab v0.8.0 gibt es 50 Welten: 16–50 mischen Thema, Tageszeit und Extras
+// (Kirschblüte, Winter, Oase, Kiefern, Kakteen, Dschungel). LKWs, Paletten und Bänder werden nie eingefärbt, damit die Farben
 // im Spiel eindeutig bleiben – nur die feste Szene im Hintergrund.
 //
 // Felder:
@@ -58,6 +59,15 @@ const BASE = [
 // Herbstlaub statt Tannen (Welt „Herbstwald“)
 const AUTUMN = { treePal: ['#a8410f', '#d9631a', '#f59a2e', '#ffd27a'], tree: 'leaf', lawn: ['#b8c95a', '#8aa63c'] };
 
+// Ab v0.8.0 weitere Extras für die Welten 16–50
+const BLOSSOM = { tree: 'leaf', treePal: ['#b83a72', '#e0629a', '#ff9cc4', '#ffe0ee'], bushPal: ['#a8336a', '#d95a92', '#ff94c0', '#ffd8ea'] };
+const WINTER = { snow: true, tree: 'pine', ground: ['#f4f8fd', '#dfe9f5'], groundFx: 'snow', lawn: ['#ffffff', '#dfeaf7'],
+  bushPal: ['#1d6a45', '#2c8a5a', '#4fae76', '#a6e0bb'], truck: { snow: true } };
+const OASIS = { tree: 'palm', lawn: ['#62e47a', '#1fb35c'], curb: '#d9b98a' };
+const PINE = { tree: 'pine' };
+const CACTUS = { tree: 'cactus', treePal: null, bushPal: ['#6d7a2a', '#8f9c35', '#b4bf55', '#dfe69a'] };
+const JUNGLE = { tree: 'palm', treePal: null, lawn: ['#3fbf55', '#1f8a3a'], bushPal: ['#1d6a2a', '#2c8a3a', '#4fae56', '#a6e0ab'], ground: ['#bfe0a8', '#9fcd88'], groundFx: 'moss' };
+
 // Ab v0.6.6: 20 Level je Welt → 15 Welten. Welten 1–10 bei Tag (je ein Grundthema),
 // 11–15 die schönsten Abend-/Nachtvarianten. Index = Welt-1, base = Index in BASE.
 export const WORLD_SIZE = 20;
@@ -68,6 +78,42 @@ const WORLD_LOOK = [
   { base: 2, time: 'night' },                // 13 Sternenwüste
   { base: 4, time: 'night' },                // 14 Neonnacht
   { base: 9, time: 'night' },                // 15 Schatzkammer
+  // Ab v0.8.0: 1000 Level → 50 Welten. Neue Mischungen aus Thema, Tageszeit und Extra.
+  { base: 0, time: 'day', extra: BLOSSOM },    // 16 Kirschblütenhof
+  { base: 1, time: 'dusk', extra: PINE },      // 17 Leuchtturmbucht
+  { base: 2, time: 'day', extra: OASIS },      // 18 Oasenmarkt
+  { base: 3, time: 'night' },                  // 19 Polarlicht
+  { base: 4, time: 'dusk' },                   // 20 Synthwave-Boulevard
+  { base: 5, time: 'night' },                  // 21 Mondscheinwald
+  { base: 6, time: 'dusk' },                   // 22 Korallenküste
+  { base: 7, time: 'night' },                  // 23 Stahlwerk
+  { base: 8, time: 'night' },                  // 24 Nachtflug
+  { base: 9, time: 'dusk' },                   // 25 Königsschatz
+  { base: 0, time: 'day', extra: WINTER },     // 26 Wintermarkt
+  { base: 1, time: 'day', extra: WINTER },     // 27 Eishafen
+  { base: 2, time: 'dusk' },                   // 28 Canyonrand
+  { base: 3, time: 'dusk' },                   // 29 Gletscherdepot
+  { base: 4, time: 'night', extra: BLOSSOM },  // 30 Pixelgarten
+  { base: 5, time: 'day', extra: AUTUMN },     // 31 Ahornallee
+  { base: 6, time: 'night' },                  // 32 Lagunennacht
+  { base: 7, time: 'dusk', extra: AUTUMN },    // 33 Rostwerk
+  { base: 8, time: 'dusk' },                   // 34 Wolkenterminal
+  { base: 9, time: 'day', extra: CACTUS },     // 35 Goldgräberstadt
+  { base: 0, time: 'night' },                  // 36 Sternenstadt
+  { base: 1, time: 'day', extra: BLOSSOM },    // 37 Frühlingshafen
+  { base: 2, time: 'night', extra: OASIS },    // 38 Oasennacht
+  { base: 5, time: 'day', extra: WINTER },     // 39 Winterwald
+  { base: 4, time: 'day', extra: BLOSSOM },    // 40 Sakura-Arkade
+  { base: 6, time: 'day', extra: PINE },       // 41 Pinienküste
+  { base: 0, time: 'dusk' },                   // 42 Laternenviertel
+  { base: 8, time: 'day', extra: WINTER },     // 43 Polarflughafen
+  { base: 9, time: 'night', extra: WINTER },   // 44 Kristallhöhle
+  { base: 1, time: 'night' },                  // 45 Mitternachtshafen
+  { base: 0, time: 'dusk', extra: AUTUMN },    // 46 Herbstmarkt
+  { base: 2, time: 'dusk', extra: OASIS },     // 47 Abendoase
+  { base: 4, time: 'night', extra: WINTER },   // 48 Frostneon
+  { base: 7, time: 'day', extra: JUNGLE },     // 49 Dschungelwerk
+  { base: 9, time: 'night', extra: BLOSSOM },  // 50 Kronjuwelen
 ];
 
 export const DEFAULT_THEME = {

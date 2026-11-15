@@ -145,6 +145,11 @@ const COMBOS = [
   ['rush', 'trailer'], ['covered', 'barrier'], ['chain', 'rush'], ['turntable', 'hidden'], ['gate', 'covered'],
 ];
 function addMech(p, m, strong) {
+  // Neue Mechaniken ab v0.8.0
+  if (m === 'special') { p.special = strong ? 2 : 1; p.mix.L = (p.mix.L || 1) + 1.2; }
+  if (m === 'light') p.lights = strong ? 2 : 1;
+  if (m === 'convoy') p.convoy = strong ? 2 : 1;
+  if (m === 'cool') p.cool = strong ? 2 : 1;
   if (m === 'hidden') p.hidden = strong ? 0.4 : 0.25;
   if (m === 'gate') { p.gates = 1; p.gateQ = strong ? [3, 4] : [2, 3]; } // 2 Tore lassen zu wenig Platz
   if (m === 'barrier') { p.barriers = strong ? 2 : 1; p.barrierN = [2, 4]; }
@@ -154,12 +159,13 @@ function addMech(p, m, strong) {
   if (m === 'covered') p.covered = strong ? 0.3 : 0.2;
   if (m === 'turntable') p.turntables = strong ? 2 : 1;
 }
-function lateLevel(w, j) {
+function lateLevel(w, j, combo = COMBOS[w - 10], extra = null) {
   const n = 10 + w * 10 + j;
   const intro = j === 0;
   const boss = j === 9;
   const rest = j === 4;
-  const tier = w >= 20 ? 1 : 0;
+  // Stufe: Abschnitte 21–30 = 1, ab Abschnitt 61 (Level 601) = 2
+  const tier = w >= 60 ? 2 : w >= 20 ? 1 : 0;
   const k = intro ? 0 : j;
   const lvl = Math.min(11, 7 + k * 0.3 + tier * 0.6 + (rest ? -1 : 0));
   const minCell = 22;
@@ -189,7 +195,7 @@ function lateLevel(w, j) {
   if (p.shape === 'ring' || p.shape === 'cross' || p.shape === 'star') p.R = rMax + 0.4;
   // Die beiden Mechaniken der Welt kommen in jedem Level vor (ab Level 6 verstärkt),
   // im Boss-Level zusätzlich die Mechaniken der nächsten Welt.
-  const [a, b] = COMBOS[w - 10];
+  const [a, b] = combo;
   addMech(p, a, k >= 6);
   addMech(p, b, k >= 6);
   p.require = [a, b];
@@ -200,7 +206,7 @@ function lateLevel(w, j) {
   // Boss-Level ab Welt 21 haben schon drei Mechaniken und mehr LKWs: 6 Fallen reichen
   if (boss && tier) p.traps = 6;
   if (boss && !crowded) {
-    const [c] = COMBOS[(w - 9) % COMBOS.length].filter((m) => m !== a && m !== b);
+    const [c] = (extra || COMBOS[(w - 9) % COMBOS.length]).filter((m) => m !== a && m !== b);
     if (c) addMech(p, c, false);
   }
   if (isLong(j)) makeLong(p, !p.require.includes('barrier'), true);
@@ -210,6 +216,85 @@ function lateLevel(w, j) {
 export const LEVEL_PLAN = [...WORLD1];
 for (let w = 1; w <= 9; w++) for (let j = 0; j < 10; j++) LEVEL_PLAN.push(worldLevel(w, j));
 for (let w = 10; w <= 29; w++) for (let j = 0; j < 10; j++) LEVEL_PLAN.push(lateLevel(w, j));
+
+// ---------- Level 301–1000 (ab v0.8.0) ----------
+// Vier neue Mechaniken, je eine Welt zum Kennenlernen (Welten 16–19):
+//   special  Sondertransport: schwarzer Tieflader holt Kunstwerke (Statuen)
+//   cool     Kühl-LKW: muss wenige Züge nach dem Andocken voll sein
+//   light    Ampel: schaltet mit jedem Zug zwischen Rot und Grün
+//   convoy   Konvoi: zwei LKWs fahren nur gemeinsam los (brauchen 2 Rampen)
+// Danach (Welten 20–50) kombiniert jeder Zehnerblock eine neue mit einer alten Mechanik,
+// alle paar Blöcke auch zwei neue. Dazu Sonder-Level an festen Plätzen jedes Blocks:
+//   3. Level  Zeitdruck (Zeitlimit) bzw. Engpass (nur 3 Rampen) im Wechsel
+//   5. Level  Verschnaufpause bzw. Großauftrag (wenige Farben, viele große LKWs)
+//   4./8.     Lange Level (wie bisher)
+//   10.       Boss mit drei Mechaniken
+export const NEW_MECHS = ['special', 'cool', 'light', 'convoy'];
+const OLD_MECHS = ['hidden', 'gate', 'barrier', 'rush', 'trailer', 'chain', 'covered', 'turntable'];
+export const LEVEL_TYPE = {}; // Level-Nr. → 'timer' | 'narrow' | 'bulk' (für Banner und Anzeige)
+function farCombo(w) {
+  const k = w - 30;
+  if (k < 8) {
+    // Einführung: erster Block nur die neue Mechanik (+ Planen), zweiter mit einer alten
+    const m = NEW_MECHS[k >> 1];
+    return k % 2 === 0 ? [m, 'hidden'] : [m, OLD_MECHS[(k * 3) % 8]];
+  }
+  const q = k - 8;
+  // jeder 5. Block: zwei neue Mechaniken zusammen
+  if (q % 5 === 4) return [NEW_MECHS[q % 4], NEW_MECHS[(q + 1 + ((q / 5) | 0) % 3) % 4]];
+  return [NEW_MECHS[q % 4], OLD_MECHS[(q * 3 + (q >> 3)) % 8]];
+}
+for (let w = 30; w <= 99; w++) {
+  const combo = farCombo(w);
+  const extra = [NEW_MECHS[(w + 2) % 4], OLD_MECHS[(w * 5) % 8]];
+  for (let j = 0; j < 10; j++) {
+    const n = w * 10 + j + 1;
+    const p = lateLevel(w, j, combo, extra);
+    // Gate + Schranke + Ampel auf einmal lässt zu wenig Platz
+    if (p.lights && p.gates && p.barriers) p.barriers = 0;
+    if (w < 38 && j === 0) { p.traps = Math.max(2, p.traps - 1); p.human = Math.max(p.human, 0.3); }
+    if (j === 2) {
+      if (w % 2 === 0) {
+        // Zeitdruck: großzügiges Limit, dafür eine Falle weniger
+        LEVEL_TYPE[n] = 'timer'; p.type = 'timer';
+        p.timer = 6; p.timerBase = 30;
+        p.traps = Math.max(2, p.traps - 1);
+      } else {
+        // Engpass: nur 3 Rampen
+        LEVEL_TYPE[n] = 'narrow'; p.type = 'narrow';
+        p.ramps = 3;
+        p.traps = Math.max(2, p.traps - 1);
+        p.minTrucks = Math.max(10, p.minTrucks - 3);
+        p.human = Math.max(p.human, 0.12);
+      }
+    }
+    if (j === 4 && w % 2 === 1) {
+      // Großauftrag: wenige Farben, viele große LKWs
+      LEVEL_TYPE[n] = 'bulk'; p.type = 'bulk';
+      p.colors = 4;
+      p.mix = { S: 1, M: 2, L: 2.5, T: 1 };
+      p.minTrucks = Math.max(10, p.minTrucks - 2);
+    }
+    LEVEL_PLAN.push(p);
+  }
+}
+
+// Fehlgeschlagene Level (ab v0.8.0): automatisch leichtere Versuche statt Listen.
+// stage 1: weniger Mindest-LKWs, eine Falle weniger, Testspieler darf öfter gewinnen;
+// stage 2: noch einmal leichter, Mechanik-Stärke auf das Minimum.
+export function relaxPlan(p, stage) {
+  const q = { ...p, mix: { ...p.mix } };
+  q.minTrucks = Math.max(8, (q.minTrucks || 0) - 3 * stage);
+  if (q.traps) q.traps = Math.max(1, q.traps - stage);
+  if (q.human != null) q.human += 0.05 * stage;
+  if (stage >= 2) {
+    q.humanLo = 0;
+    if (q.gates) { q.gates = 1; q.gateQ = [2, 3]; }
+    if (q.barriers) q.barriers = 1;
+    for (const k of ['lights', 'convoy', 'cool', 'special', 'chains', 'turntables', 'rush']) if (q[k] > 1) q[k] = 1;
+  }
+  return q;
+}
 
 // Zweiter Versuch für Level, die mit dem vollen Plan nicht erzeugt werden konnten
 // (ab v0.7.1): etwas weniger Mindest-LKWs, eine Falle weniger, kleineres Tor, nur ein Tor.

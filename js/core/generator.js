@@ -21,6 +21,11 @@
 //   target: [min, max]         Erfolgsquote simulierter Spieler (smart = wie umsichtig)
 //   hidden, gates, gateQ, barriers, barrierN, rush, chains, covered, turntables
 //   chaos                      Anteil frei (schräg, kreuz und quer) gestellter LKWs
+//   special                    Anzahl Sondertransporte (schwarzer Tieflader, Kunstwerke) – ab v0.8.0
+//   lights                     Anzahl Ampeln (schalten mit jedem Zug um)
+//   convoy                     Anzahl Konvois (zwei LKWs fahren nur gemeinsam)
+//   cool                       Anzahl Kühl-LKWs (müssen kurz nach dem Andocken voll sein)
+//   timer                      Sekunden pro Zug der Lösung für ein Zeitlimit (+ timerBase)
 //   human                      höchste Gewinnquote eines simulierten, 2 Züge
 //                              vorausdenkenden Spielers (ab v0.5.4; niedrig = schwer)
 //   humanLo                    … und mindestens so oft (sonst unfair schwer)
@@ -32,7 +37,7 @@ import { DIRS, SIZES, LOT, GONE, WAIT } from './constants.js';
 import { makeRng } from './rng.js';
 import { Game, validateLevel } from './model.js';
 import { playoutRate, trapStats, humanRate } from './solver.js';
-import { truckPoly, rectPoly, gatePoly, rasterCells, polyOverlap, bodyLen, BODY_W } from './geom.js';
+import { truckPoly, rectPoly, gatePoly, cellPoly, rasterCells, polyOverlap, bodyLen, BODY_W } from './geom.js';
 
 const DIR_KEYS = ['U', 'D', 'L', 'R'];
 
@@ -262,6 +267,28 @@ function buildLot(p, rng) {
     barriers.push({ cells: [[bx, by]], n: nmin + rng.int(nmax - nmin + 1) });
   }
 
+  // Ampeln (ab v0.8.0): auf freien Feldern im Weg von LKWs, nicht unter schrägen LKWs
+  const lights = [];
+  const freeTrucks = trucks.filter((t) => t.a !== undefined).map((t) => truckPoly(t));
+  for (let n = 0; n < (p.lights || 0); n++) {
+    const cand = [];
+    for (const t of trucks) {
+      if (t.a !== undefined || t.tt) continue;
+      const [dx, dy] = DIRS[t.d];
+      let x = t.x + dx, y = t.y + dy, k = 0;
+      while (x >= 0 && y >= 0 && x < W && y < H && k < 4) {
+        if (free(x, y) && !lights.some((l) => Math.abs(l.x - x) + Math.abs(l.y - y) < 2)) cand.push([x, y]);
+        x += dx; y += dy; k++;
+      }
+    }
+    rng.shuffle(cand);
+    const hit = cand.find(([x, y]) => !freeTrucks.some((P) => polyOverlap(P, cellPoly(x, y))));
+    if (!hit) break;
+    const [lx, ly] = hit;
+    used[ly * W + lx] = 1;
+    lights.push({ x: lx, y: ly, p: rng.int(2) });
+  }
+
   // Farben: gleichmäßig verteilt, Anhänger mit zweiter Farbe
   const all = [...trucks, ...gates.flatMap((g) => g.q)];
   const palette = rng.shuffle([...Array(8).keys()]).slice(0, p.colors);
@@ -272,10 +299,16 @@ function buildLot(p, rng) {
     t.c = palette[pool[i]];
     if (t.s === 'T') t.c2 = palette[rng.int(p.colors)];
   });
+  // Sondertransport (ab v0.8.0): große LKWs werden zu schwarzen Tiefladern mit Kunstwerken
+  if (p.special) {
+    const cand = rng.shuffle(trucks.filter((t) => t.s === 'L' && !t.tt));
+    for (const t of cand.slice(0, p.special)) { t.s = 'X'; t.c = 8; }
+  }
 
   const level = { w: W, h: H, angle: p.angle || 0, ramps: p.ramps, trucks, supply: '' };
   if (gates.length) level.gates = gates;
   if (barriers.length) level.barriers = barriers;
+  if (lights.length) level.lights = lights;
 
   // Ketten: gesperrter LKW + Schlüssel-LKW
   for (let n = 0; n < (p.chains || 0); n++) {
@@ -286,6 +319,30 @@ function buildLot(p, rng) {
       trucks[i].k = k;
       break;
     }
+  }
+  // Konvois (ab v0.8.0): zwei nahe LKWs fahren nur gemeinsam los
+  const center = (t) => { const P = truckPoly(t); return [P.reduce((a, q) => a + q[0], 0) / P.length, P.reduce((a, q) => a + q[1], 0) / P.length]; };
+  for (let n = 0; n < (p.convoy || 0); n++) {
+    const ok = (t) => !t.tt && t.k === undefined && t.v === undefined && !trucks.some((o) => o.k === trucks.indexOf(t));
+    const pairs = [];
+    for (let i = 0; i < trucks.length; i++) {
+      if (!ok(trucks[i])) continue;
+      const [ax, ay] = center(trucks[i]);
+      for (let k = i + 1; k < trucks.length; k++) {
+        if (!ok(trucks[k])) continue;
+        const [bx, by] = center(trucks[k]);
+        const d = Math.hypot(ax - bx, ay - by);
+        if (d >= 1.5 && d <= 3.6) pairs.push([i, k]);
+      }
+    }
+    rng.shuffle(pairs);
+    let done = false;
+    for (const [i, k] of pairs.slice(0, 12)) {
+      trucks[i].v = k; trucks[k].v = i;
+      if (staticClearable(W, H, trucks, gates)) { done = true; break; }
+      delete trucks[i].v; delete trucks[k].v;
+    }
+    if (!done) break;
   }
   return level;
 }
@@ -308,9 +365,18 @@ function planFor(g, x, budget) {
       const t = c.trucks[target];
       if (t.state === WAIT) return null;
       if (c.isLocked(t)) { target = t.lock; continue; }
-      const b = c.blockerOf(t);
-      if (b === -1) break;
-      if (b < 0) return null; // Tor oder Schranke
+      const u = c.partner(t);
+      if (u && c.isLocked(u)) { target = u.lock; continue; }
+      const b = c.blockerOf(t, u ? u.id : -1);
+      if (b === -1) {
+        if (!u) break;
+        const b2 = c.blockerOf(u, t.id);
+        if (b2 === -1) break;
+        if (b2 < 0) return null;
+        target = b2;
+        continue;
+      }
+      if (b < 0) return null; // Tor, Schranke oder rote Ampel
       target = b;
     }
     const r = c.tap(target);
@@ -421,6 +487,8 @@ export function buildLevel(p, seed) {
       if (t.id < level.trucks.length && t.state === LOT && g.blockerOf(t) !== -1 && rng.next() < p.hidden) level.trucks[t.id].h = 1;
     }
   }
+  if (p.type) level.type = p.type;
+  if (p.timer) level.time = Math.round(((p.timerBase ?? 25) + level.sol.length * p.timer) / 5) * 5;
   return level;
 }
 
@@ -447,6 +515,25 @@ function addRush(level, path, rng, count) {
   }
 }
 
+// Kühl-LKWs (ab v0.8.0) anhand der Lösung: Wie viele Züge stand der LKW an der Rampe,
+// bis er voll war? Das Limit ist genau so knapp bzw. einen Zug großzügiger.
+function addCool(level, path, rng, count) {
+  const g = new Game(level);
+  const nBase = level.trucks.length;
+  const dock = {}, need = {};
+  for (const id of path) {
+    const r = g.tap(id);
+    if (!r.ok) return;
+    for (const e of r.events) {
+      if (e.type === 'exit') dock[e.id] = g.moves;
+      if (e.type === 'depart' && dock[e.id] !== undefined) need[e.id] = g.moves - dock[e.id];
+    }
+  }
+  const cand = Object.keys(need).map(Number).filter((id) => id < nBase && need[id] >= 1 && need[id] <= 6 && !level.trucks[id].r && level.trucks[id].s !== 'S');
+  rng.shuffle(cand);
+  for (const id of cand.slice(0, count)) level.trucks[id].f = need[id] + rng.int(2);
+}
+
 // Enthält das Level die geforderte Mechanik wirklich?
 export function hasMechanic(lv, m) {
   const T = lv.trucks;
@@ -457,8 +544,12 @@ export function hasMechanic(lv, m) {
     case 'rush': return T.some((t) => t.r);
     case 'trailer': return T.some((t) => t.s === 'T');
     case 'chain': return T.some((t) => t.k !== undefined);
-    case 'covered': return /[a-h]/.test(lv.supply);
+    case 'covered': return /[a-i]/.test(lv.supply);
     case 'turntable': return T.some((t) => t.tt);
+    case 'special': return T.some((t) => t.s === 'X');
+    case 'light': return !!lv.lights?.length;
+    case 'convoy': return T.some((t) => t.v !== undefined);
+    case 'cool': return T.some((t) => t.f);
     default: return true;
   }
 }
@@ -473,6 +564,7 @@ export function lotCell(lv) {
   for (const t of g.trucks) for (const [x, y] of g.cells(t)) add(x, y);
   for (const gt of g.gates) { const [dx, dy] = DIRS[gt.d]; add(gt.x, gt.y); add(gt.x - dx * 1.6, gt.y - dy * 1.6); }
   for (const b of g.barriers) for (const [x, y] of b.cells) add(x, y);
+  for (const l of g.lights) add(l.x, l.y);
   return Math.min(30, LOT_PX.w / (x1 - x0), LOT_PX.h / (y1 - y0));
 }
 
@@ -500,8 +592,10 @@ export function findLevel(p, startSeed, { maxTries = 300 } = {}) {
     if (p.minTrucks && lv.trucks.length < p.minTrucks - Math.floor(smallFails / 40)) { smallFails++; continue; }
     if (p.minCell && lotCell(lv) < p.minCell) { cellFails++; continue; }
     // require: eine Mechanik oder Liste (ab v0.6.0); Eilaufträge kommen erst danach dazu
-    if (p.require && [].concat(p.require).some((m) => m !== 'rush' && !hasMechanic(lv, m))) continue;
+    if (p.require && [].concat(p.require).some((m) => m !== 'rush' && m !== 'cool' && !hasMechanic(lv, m))) continue;
     if (p.rush) addRush(lv, lv.sol, makeRng(seed * 31), p.rush);
+    if (p.cool) addCool(lv, lv.sol, makeRng(seed * 37), p.cool);
+    if (p.require && [].concat(p.require).includes('cool') && !hasMechanic(lv, 'cool')) continue;
     if (!replaySolution(lv)) continue;
     const rate = playoutRate(lv, p.playouts || 60, seed, p.smart ?? 0.85);
     const res = { level: lv, seed, stats: { rate: +rate.toFixed(2), moves: lv.sol.length } };

@@ -1,6 +1,6 @@
 # Pallet Rush – Design-Dokument
 
-Stand: 15.11.2026 · Version 0.7.7
+Stand: 15.11.2026 · Version 0.8.0
 Autor: Nino Bernhardt · Technik: Claude Code
 
 Dieses Dokument hält alle abgestimmten Entscheidungen fest. Bei Änderungen
@@ -52,6 +52,7 @@ dieser Farbe.
 | LKW | 3 Felder | 24 |
 | Sattelzug | 4 Felder | 40 |
 | Anhängerzug (ab Welt 6) | 5 Felder | 2 Abteile, je 8, auch zweifarbig |
+| Sondertransport (ab Level 301) | 4 Felder | 8 Kunstwerke (schwarzer Tieflader mit Goldrahmen) |
 
 ## 4. Rampen
 
@@ -61,17 +62,19 @@ dieser Farbe.
 - Ein LKW setzt erst rückwärts in die Bucht, wenn sie wirklich frei ist; sonst
   wartet er davor. LKWs fahren nie ineinander.
 
-## 5. Welten und Mechaniken (300 Level)
+## 5. Welten und Mechaniken (1000 Level)
 
 Eine Welt umfasst 20 Level (ab v0.6.6; vorher 10 Level je Welt und 30 Welten).
 Die Level sind in Abschnitte zu 10 Level gebaut: Bis Level 100 bringt jeder
 Abschnitt eine neue Mechanik, danach kombiniert jeder Abschnitt zwei bekannte.
 Level 10 und 20 jeder Welt sind Boss-Level. Die erste Begegnung mit einer
-Mechanik wird mit einem kurzen Hinweis-Fenster erklärt. Es gibt keine
-Echtzeit-Uhren, alles läuft zug- oder abfahrtsbasiert, damit der Solver
-jedes Level garantiert prüfen kann.
+Mechanik wird mit einem kurzen Hinweis-Fenster erklärt. Bis Level 300 gibt es
+keine Echtzeit-Uhren, alles läuft zug- oder abfahrtsbasiert, damit der Solver
+jedes Level garantiert prüfen kann. Einzige Ausnahme ab v0.8.0 sind die
+Zeitlevel (siehe Abschnitte 31–100): Die Uhr ist großzügig bemessen, die
+Lösbarkeit selbst prüft der Solver wie immer zugbasiert.
 
-### Die 15 Welten
+### Die 50 Welten
 
 | Welt | Level | Name | Optik |
 |---|---|---|---|
@@ -90,6 +93,49 @@ jedes Level garantiert prüfen kann.
 | 13 | 241–260 | Sternenwüste | Sand, Nacht |
 | 14 | 261–280 | Neonnacht | Neon, Nacht |
 | 15 | 281–300 | Schatzkammer | Gold, Nacht |
+| 16 | 301–320 | Kirschblütenhof | Stadt, Kirschblüte, Tag |
+| 17 | 321–340 | Leuchtturmbucht | Hafen, Kiefern, Abend |
+| 18 | 341–360 | Oasenmarkt | Wüste, Oase, Tag |
+| 19 | 361–380 | Polarlicht | Schnee, Nacht |
+| 20 | 381–400 | Synthwave-Boulevard | Neon, Abend |
+| 21 | 401–420 | Mondscheinwald | Wald, Nacht |
+| 22 | 421–440 | Korallenküste | Tropen, Abend |
+| 23 | 441–460 | Stahlwerk | Fabrik, Nacht |
+| 24 | 461–480 | Nachtflug | Flughafen, Nacht |
+| 25 | 481–500 | Königsschatz | Gold, Abend |
+| 26 | 501–520 | Wintermarkt | Stadt, Winter, Tag |
+| 27 | 521–540 | Eishafen | Hafen, Winter, Tag |
+| 28 | 541–560 | Canyonrand | Wüste, Abend |
+| 29 | 561–580 | Gletscherdepot | Schnee, Abend |
+| 30 | 581–600 | Pixelgarten | Neon, Kirschblüte, Nacht |
+| 31 | 601–620 | Ahornallee | Wald, Herbst, Tag |
+| 32 | 621–640 | Lagunennacht | Tropen, Nacht |
+| 33 | 641–660 | Rostwerk | Fabrik, Herbst, Abend |
+| 34 | 661–680 | Wolkenterminal | Flughafen, Abend |
+| 35 | 681–700 | Goldgräberstadt | Gold, Kakteen, Tag |
+| 36 | 701–720 | Sternenstadt | Stadt, Nacht |
+| 37 | 721–740 | Frühlingshafen | Hafen, Kirschblüte, Tag |
+| 38 | 741–760 | Oasennacht | Wüste, Oase, Nacht |
+| 39 | 761–780 | Winterwald | Wald, Winter, Tag |
+| 40 | 781–800 | Sakura-Arkade | Neon, Kirschblüte, Tag |
+| 41 | 801–820 | Pinienküste | Tropen, Kiefern, Tag |
+| 42 | 821–840 | Laternenviertel | Stadt, Abend |
+| 43 | 841–860 | Polarflughafen | Flughafen, Winter, Tag |
+| 44 | 861–880 | Kristallhöhle | Gold, Winter, Nacht |
+| 45 | 881–900 | Mitternachtshafen | Hafen, Nacht |
+| 46 | 901–920 | Herbstmarkt | Stadt, Herbst, Abend |
+| 47 | 921–940 | Abendoase | Wüste, Oase, Abend |
+| 48 | 941–960 | Frostneon | Neon, Winter, Nacht |
+| 49 | 961–980 | Dschungelwerk | Fabrik, Dschungel, Tag |
+| 50 | 981–1000 | Kronjuwelen | Gold, Kirschblüte, Nacht |
+
+Welten 16–50 (ab v0.8.0) mischen die zehn Grundthemen mit Tageszeit (Tag, Abend,
+Nacht) und einem Extra (`js/render/themes.js`): Kirschblüte (rosa Bäume und Büsche),
+Winter (Schnee auf Boden, Rasen, Bäumen und LKWs), Oase (Palmen und grüner Rasen in
+der Wüste), Kiefern, Kakteen, Dschungel, Herbst. Ihre Banner sind Farbvarianten der
+Banner 1–10 (Extra-Tönung, dann Abend-/Nachtfilter, jedes zweite gespiegelt), erzeugt
+mit Pillow. Die Level-Auswahl zeichnet mit `content-visibility: auto` nur die
+sichtbaren Welten, damit 1000 Knöpfe flüssig scrollen.
 
 Ab v0.7.0 sind die Level ab 11 schwerer: mehr LKWs, der simulierte Spieler darf
 seltener gewinnen (Boss-Level höchstens 7 %), und Level 4 und 8 jedes Zehner-Abschnitts
@@ -166,6 +212,57 @@ Abschnitte 21–30 zwischen 7 und 14 %. Erzeugt parallel in Web Workern
 Weltbanner 11–15 sind Farbvarianten der Banner 2, 6, 3, 5 und 10 (11–12 in
 Abendstimmung, 13–15 bei Nacht, warme Lichter bleiben hell). Erzeugt mit
 Pillow, ohne neue Grafiken.
+
+### Abschnitte 31–100 (ab v0.8.0, Level 301–1000)
+
+Ab Level 300 kamen bisher nur noch bekannte Mechaniken in neuen Paaren. Damit es
+nie eintönig wird, bringt v0.8.0 vier neue Mechaniken, drei Level-Typen und
+700 neue Level.
+
+**Neue Mechaniken**
+
+| Mechanik | Erklärung | Erstes Level |
+|---|---|---|
+| Sondertransport | Schwarzer Tieflader (4 Felder, Goldrahmen auf dem Dach) holt nur Kunstwerke: Marmor-Kisten mit goldener Statue (Farbe 8, eigene Palettenart). Normale LKWs nehmen keine Statuen, der Tieflader nichts anderes. Kunstwerke können auch verpackt kommen. | 301 |
+| Kühl-LKW | Schneeflocken-Plakette mit Zahl: so viele Züge darf der LKW an der Rampe stehen, bis er voll sein muss, sonst „Aufgetaut!“ (verloren). An der Rampe läuft die Zahl neben der Füllanzeige herunter, die letzte Runde blinkt rot. Das Limit wird aus der Referenzlösung abgeleitet (genau so knapp oder einen Zug großzügiger). | 321 |
+| Ampel | Steht auf einem Feld im Weg. Sie schaltet mit jedem Zug zwischen Rot und Grün. Bei Rot blockiert sie wie ein Hindernis, bei Grün ist das Feld frei. Tippt man einen LKW, der nur an einer roten Ampel hängt, kommt „Rote Ampel!“. Die Spiellogik kennt die Phase (Teil des Solver-Schlüssels). | 341 |
+| Konvoi | Zwei gekoppelte LKWs (orange Kupplungsstange) fahren nur zusammen los. Beide brauchen freie Bahn (der Partner zählt nicht als Hindernis) und es müssen zwei Rampen frei sein, sonst „Der Konvoi braucht zwei freie Rampen“. Ein Kran-Bonus löst die Kupplung. Der Zug zählt einmal. | 361 |
+
+Einführung: Die Abschnitte 31–38 stellen die neuen Mechaniken nacheinander vor
+(je zwei Abschnitte: erst mit Planen, dann mit einer alten Mechanik). Danach
+kombiniert jeder Abschnitt eine neue mit einer alten Mechanik, jeder fünfte zwei
+neue. Boss-Level nehmen eine weitere neue und eine alte Mechanik dazu.
+Tor + Schranke + Ampel zusammen gibt es nicht (zu wenig Platz), dann entfällt die Schranke.
+
+**Level-Typen** (Banner beim Start zeigt den Typ)
+
+| Typ | Wo | Regel |
+|---|---|---|
+| Zeitlevel | Level 3 jedes geraden Abschnitts | Countdown oben in der Leiste. Startet mit dem ersten Zug, steht bei offenen Fenstern. Limit = 30 s + 6 s je Zug der Lösung (auf 5 s gerundet), dafür eine Falle weniger. Test: Die Ideallösung mit allen Animationen braucht rund 40 % der Zeit. Kein Weiterspielen nach Ablauf. |
+| Enger Hof | Level 3 jedes ungeraden Abschnitts | Nur 3 Rampen, eine Falle und 3 LKWs weniger. |
+| Großlieferung | Level 5 jedes ungeraden Abschnitts | Nur 4 Farben, viele große LKWs, lange Palettenschlangen. |
+
+Schwierigkeit: Abschnitte 31–60 auf der Stufe von 21–30, ab Abschnitt 61
+(Level 601) eine Stufe dichter mit mehr Fallen. Der erste Level eines
+Einführungs-Abschnitts ist etwas leichter (eine Falle weniger). Schwere und sehr schwere Level folgen den bekannten
+Regeln (`difficulty(n)`), `HARDER` gilt für alle 1000 Level. Schafft der Generator
+ein Level ab 301 nicht, versucht er `relaxPlan` Stufe 1 (weniger LKWs und Fallen,
+der simulierte Spieler darf öfter gewinnen) und Stufe 2 (zusätzlich höchstens eine
+Mechanik pro Typ).
+
+Erklärfenster: 301 Sondertransport, 303 Zeitlevel, 313 Enger Hof, 315 Großlieferung,
+321 Kühl-LKW, 341 Ampel, 361 Konvoi.
+
+Ergebnis v0.8.0 (700 neue Level, 6 Worker, gut 20 Minuten): Jedes Level ab 301 enthält
+mindestens eine neue Mechanik und mindestens zwei Mechaniken insgesamt (Ø 2,4). Je rund
+200 Level mit Kühl-LKW, Sondertransport, Konvoi und Ampel; je 35 Zeitlevel, enge Höfe und
+Großlieferungen. Simulierter Spieler gewinnt Ø 6,7 % (301–600) bzw. 4,6 % (601–1000),
+Fallen Ø 5,6 bzw. 6,3 – also schwerer als 201–300. 516 Level mit vollem Plan, 105 mit
+`relaxPlan` Stufe 1, 78 mit Stufe 2, eines (604) mit Stufe 3 (nur beim Nachgenerieren
+der 34 Fehlschläge mit `generateParallel(liste, 0, 6, 1200, 3)` erlaubt).
+Prüfung: Alle 1000 Level spielen ihre Lösung fehlerfrei nach. Stau-Dauertest
+(`tools/traffictest.js`, Konvoi braucht dort wie im Spiel zwei sichtbar freie Buchten):
+Hochformat 54/54 gewonnen, Querformat 6/6, Zufallszüge 24 Partien ohne Stillstand.
 
 ## 6. Bonus-Items
 

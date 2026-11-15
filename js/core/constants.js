@@ -15,6 +15,8 @@ export const SIZES = {
   M: { len: 3, cap: 24, caps: [24], name: 'truck' },
   L: { len: 4, cap: 40, caps: [40], name: 'semi' },
   T: { len: 5, cap: 16, caps: [8, 8], name: 'trailer' },
+  // Sondertransport (ab v0.8.0): schwarzer Tieflader, holt nur Kunstwerke (Farbe 8)
+  X: { len: 4, cap: 8, caps: [8], name: 'lowboy' },
 };
 
 // Drehscheibe: Reihenfolge im Uhrzeigersinn.
@@ -24,7 +26,7 @@ export const CLOCKWISE = ['U', 'R', 'D', 'L'];
 export const COVER = 16;
 export const colorOf = (code) => code & 15;
 
-// Nachschub-String: '0'–'7' normale Palette, 'a'–'h' Kartonpalette.
+// Nachschub-String: '0'–'8' normale Palette, 'a'–'i' Kartonpalette (8/i = Kunstwerk).
 export function parseSupply(str) {
   const out = new Array(str.length);
   for (let i = 0; i < str.length; i++) {
@@ -44,7 +46,10 @@ export const COLORS = [
   { key: 'orange', hex: '#ff6a00', light: '#ff9a40', dark: '#d04800', symbol: '✚' },
   { key: 'cyan',   hex: '#00c8ff', light: '#55dcff', dark: '#008cc8', symbol: '♥' },
   { key: 'pink',   hex: '#ff6ad6', light: '#ffaeee', dark: '#d42aa6', symbol: '✿' },
+  // Sonderfarbe (ab v0.8.0): Kunstwerke/Statuen für den schwarzen Sondertransport
+  { key: 'black',  hex: '#23252e', light: '#4a4d5c', dark: '#0d0e13', symbol: '♛', special: true },
 ];
+export const SPECIAL = 8;
 
 // Zustände eines LKWs.
 export const LOT = 0;   // steht im Hof

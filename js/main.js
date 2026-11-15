@@ -19,7 +19,8 @@ export const BOOSTERS = [
   { key: 'forklift', unlock: 40, price: 400 },
 ];
 // Erstes Level jeder neuen Mechanik
-const MECH_INTRO = { 11: 'hidden', 21: 'gate', 31: 'barrier', 41: 'rush', 51: 'trailer', 61: 'chain', 71: 'covered', 81: 'turntable', 91: 'master' };
+const MECH_INTRO = { 11: 'hidden', 21: 'gate', 31: 'barrier', 41: 'rush', 51: 'trailer', 61: 'chain', 71: 'covered', 81: 'turntable', 91: 'master',
+  301: 'special', 321: 'cool', 341: 'light', 361: 'convoy', 303: 'timer', 313: 'narrow', 315: 'bulk' };
 // ab v0.7.3 weniger (vorher 50/25/10), dafür +1 Münze pro Kombo
 const REWARD = { win: 30, firstTry: 10, replay: 5 };
 const COMBO_COIN = 1;
@@ -141,6 +142,7 @@ const view = new GameView($('#game'), {
 window.__prView = view;
 
 let game = null;
+let lvTimer = null; // Zeitlimit des aktuellen Levels (ab v0.8.0)
 let levelNo = 1;
 let hintShown = false;
 let warnOn = false;
@@ -158,6 +160,7 @@ let coop = null;
 // ---------- Menü ----------
 function showMenu() {
   if (game) fadeScreen();
+  stopLevelTimer();
   game = null;
   endDuel();
   hideBanner();
@@ -202,6 +205,7 @@ function startLevel(n) {
   document.body.classList.toggle('coop-mode', !!coop);
   $('#hud-duel').classList.toggle('hidden', !duel);
   if (duel && !(duel.live && duel.t0)) resetDuelClock();
+  setupLevelTimer();
   setHudLevel();
   updateCoins();
   refreshBoosters();
@@ -257,7 +261,9 @@ function showBanner(n) {
   const d = difficulty(n);
   const el = $('#level-banner');
   el.className = 'level-banner ' + d;
-  el.innerHTML = `<div class="lb-inner"><b>${t('level')} ${n}</b>${d === 'normal' ? '' : `<span class="lb-diff">${t(d)}</span><small>${t('hardBonus')} <span class="coin small"></span>×${DIFF_MULT[d]}</small>`}</div>`;
+  const ty = LEVELS[n - 1]?.type;
+  const tag = ty ? `<span class="lb-type ${ty}">${t('type_' + ty)}</span>` : '';
+  el.innerHTML = `<div class="lb-inner"><b>${t('level')} ${n}</b>${tag}${d === 'normal' ? '' : `<span class="lb-diff">${t(d)}</span><small>${t('hardBonus')} <span class="coin small"></span>×${DIFF_MULT[d]}</small>`}</div>`;
   clearTimeout(bannerTimer);
   bannerTimer = setTimeout(hideBanner, d === 'normal' ? 1500 : 2200);
   if (d !== 'normal') sfx.warn();
@@ -340,15 +346,18 @@ function handleTap(id) {
     return;
   }
   // Alle Buchten sichtbar belegt: LKW bleibt stehen (wie bei „Keine Rampe frei“)
-  if (!view.canDispatch() && game.canExit(game.trucks[id])) {
+  const tr0 = game.trucks[id];
+  const two = tr0 && game.partner(tr0) ? 2 : 1;
+  if (!view.canDispatch(two) && game.canExit(tr0)) {
     view.nudge(id, -1);
     sfx.noRamp();
-    toast(t('noRamp'));
+    toast(t(two > 1 ? 'noRamp2' : 'noRamp'));
     return;
   }
   const res = game.tap(id);
   if (res.ok) {
     if (duel && !duel.t0) startDuelClock();
+    if (lvTimer && !lvTimer.started) lvTimer.started = true;
     if (hintShown) { hideToast(); hintShown = false; }
     updateGuide();
     hideBanner();
@@ -371,10 +380,14 @@ function tapFeedback(id, res) {
     view.nudge(id, res.key);
     sfx.blocked();
     toast(t('locked2'));
-  } else if (res.reason === 'noRamp') {
+  } else if (res.reason === 'noRamp' || res.reason === 'noRamp2') {
     view.nudge(id, -1);
     sfx.noRamp();
-    toast(t('noRamp'));
+    toast(t(res.reason));
+  } else if (res.reason === 'red') {
+    view.nudge(res.id ?? id, -1);
+    sfx.blocked();
+    toast(t('redLight'));
   }
 }
 
@@ -489,10 +502,11 @@ function handleLost(reason) {
   $('#warn').classList.add('hidden');
   sfx.lose();
   vibrate(60);
-  const text = reason === 'rush' ? t('lostRush') : reason === 'stuck' ? t('lostStuck') : t('lostText');
+  stopLevelTimer();
+  const text = reason === 'rush' ? t('lostRush') : reason === 'stuck' ? t('lostStuck') : reason === 'cool' ? t('lostCool') : reason === 'time' ? t('lostTime') : t('lostText');
   // Weiterspielen mit Extra-Rampe: nur wenn alle Rampen voll waren und die Extra-Rampe noch frei ist
   const actions = [];
-  const canContinue = reason !== 'rush' && reason !== 'stuck' && !game.extraUsed;
+  const canContinue = reason !== 'rush' && reason !== 'stuck' && reason !== 'cool' && reason !== 'time' && !game.extraUsed;
   if (canContinue) {
     const def = BOOSTERS[0];
     const st = save.boosters.ramp;
@@ -508,7 +522,7 @@ function handleLost(reason) {
   actions.push({ label: t('restart'), cls: canContinue ? '' : 'primary', fn: () => startLevel(levelNo) });
   actions.push({ label: t('menu'), cls: 'quiet', fn: showMenu });
   showDialog({
-    title: canContinue ? t('continueTitle') : reason === 'rush' ? t('lostRushTitle') : t('lost'),
+    title: canContinue ? t('continueTitle') : reason === 'rush' || reason === 'time' ? t('lostRushTitle') : reason === 'cool' ? t('lostCoolTitle') : t('lost'),
     cls: 'lose',
     html: `<img class="result-art lose" src="assets/lose.png" alt=""><p>${text}</p>${canContinue ? `<p class="cont-text">${t('continueText')}</p>` : ''}`,
     actions,
@@ -1088,6 +1102,41 @@ function fmtTime(ms) {
   const r = s - m * 60;
   return m > 0 ? `${m}:${r.toFixed(1).padStart(4, '0')}` : `${r.toFixed(1)} s`;
 }
+// ---------- Zeitlimit (Level-Typ „timer“, ab v0.8.0) ----------
+// Die Uhr läuft ab dem ersten Zug und steht, solange ein Fenster offen ist.
+function setupLevelTimer() {
+  stopLevelTimer();
+  const tm = !duel && !coop && LEVELS[levelNo - 1]?.time;
+  if (!tm) return;
+  lvTimer = { left: tm * 1000, last: 0, started: false };
+  const hd = $('#hud-duel');
+  hd.classList.remove('hidden', 'running', 'behind');
+  hd.classList.add('countdown-mode');
+  $('#hud-time').textContent = fmtClock(lvTimer.left + 999);
+  lvTimer.iv = setInterval(tickLevelTimer, 200);
+}
+function stopLevelTimer() {
+  if (!lvTimer) return;
+  clearInterval(lvTimer.iv);
+  lvTimer = null;
+  $('#hud-duel').classList.remove('countdown-mode', 'running', 'behind');
+}
+function tickLevelTimer() {
+  if (!lvTimer || !game || game.status !== 'playing') return;
+  const now = performance.now();
+  const run = lvTimer.started && !modalOpen() && !document.hidden;
+  if (run && lvTimer.last) lvTimer.left -= now - lvTimer.last;
+  lvTimer.last = now;
+  const hd = $('#hud-duel');
+  hd.classList.toggle('running', run && lvTimer.left > 10000);
+  hd.classList.toggle('behind', lvTimer.left <= 10000);
+  $('#hud-time').textContent = fmtClock(lvTimer.left + 999);
+  if (lvTimer.left <= 0) {
+    game.status = 'lost';
+    handleLost('time');
+  }
+}
+
 function fmtClock(ms) {
   const s = Math.floor(Math.max(0, ms) / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -1846,7 +1895,7 @@ function coopApply(id, who) {
   if (coop.owner[id] !== who) return;
   const tr = game.trucks[id];
   let res;
-  if (!view.canDispatch() && tr && game.canExit(tr)) res = { ok: false, reason: 'noRamp' };
+  if (tr && !view.canDispatch(game.partner(tr) ? 2 : 1) && game.canExit(tr)) res = { ok: false, reason: game.partner(tr) ? 'noRamp2' : 'noRamp' };
   else res = game.tap(id);
   if (!res.ok) {
     if (who === 0) tapFeedback(id, res);

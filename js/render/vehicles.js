@@ -427,6 +427,15 @@ function buildGeom(size) {
       }
       cargo(-hl, 1.16, 0.17, 0, 'tarp');
       break;
+    case 'X': // Sondertransport (ab v0.8.0): wie der Sattelzug, Koffer mit Goldrand
+      chassis(0.78, 1.82, 0.26);
+      g.low.push({ k: 'fifth', x: 1.24, r: 0.12, z: 0.135 });
+      wheel(1.66, false); wheel(1.06, true);
+      wheel(-1.20, true); wheel(-1.44, true); wheel(-1.68, true);
+      cab(1.36, { zb: 0.25, zt: 0.375, rf: 0.06, rg: 0.05, hood: 0.045, slope: 0.09, dz: 0.445 });
+      bumper(0.4);
+      cargo(-hl, 1.16, 0.17, 0, 'box');
+      break;
     case 'T':
       chassis(-0.02, 2.34, 0.27);
       chassis(-2.36, -0.56, 0.27);
@@ -928,6 +937,15 @@ function drawCargo(ctx, V, p, c, o, g) {
   // Glanz
   ctx.fillStyle = 'rgba(255,255,255,0.12)';
   rrect(ctx, p.x0 + 0.08, -hw * 0.72, len - 0.16, hw * 0.2, 0.04); ctx.fill();
+  // Sondertransport: goldener Zierrahmen auf dem Dach
+  if (g.size === 'X') {
+    ctx.lineWidth = 0.05;
+    ctx.strokeStyle = '#f2c046';
+    rrect(ctx, p.x0 + 0.06, -hw + 0.06, len - 0.12, 2 * hw - 0.12, 0.05); ctx.stroke();
+    ctx.lineWidth = 0.018;
+    ctx.strokeStyle = '#fff1b8';
+    rrect(ctx, p.x0 + 0.11, -hw + 0.11, len - 0.22, 2 * hw - 0.22, 0.04); ctx.stroke();
+  }
   if (VSTYLE.snow) {
     snowCap(ctx, p.x0 + 0.04, p.x1 - 0.04, -hw + 0.02, -hw + 0.12);
     snowCap(ctx, p.x0 + 0.04, p.x1 - 0.04, hw - 0.12, hw - 0.02);
@@ -1381,9 +1399,42 @@ export function drawPalletShadow(ctx, x, y, s, lift = 0) {
   ctx.globalAlpha = ga;
 }
 
+// Kunstwerk (ab v0.8.0): goldene Statue auf der Marmor-Kiste, steht immer aufrecht
+function drawStatue(ctx, x, y, s) {
+  const h = s * 0.72, w = s * 0.42;
+  ctx.save();
+  ctx.translate(x, y);
+  const g = ctx.createLinearGradient(-w, -h, w, 0);
+  g.addColorStop(0, '#fff2b0'); g.addColorStop(0.45, '#f2c046'); g.addColorStop(1, '#a8740f');
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(0.9, s * 0.045);
+  ctx.strokeStyle = '#4a2f04';
+  ctx.fillStyle = g;
+  // Sockel
+  ctx.beginPath(); ctx.ellipse(0, -s * 0.02, w * 0.75, s * 0.09, 0, 0, TAU); ctx.fill(); ctx.stroke();
+  // Körper mit erhobenem Arm
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.42, -s * 0.04);
+  ctx.quadraticCurveTo(-w * 0.55, -h * 0.55, -w * 0.3, -h * 0.72);
+  ctx.lineTo(-w * 0.75, -h * 1.02);
+  ctx.lineTo(-w * 0.55, -h * 1.08);
+  ctx.lineTo(-w * 0.05, -h * 0.8);
+  ctx.lineTo(w * 0.3, -h * 0.74);
+  ctx.quadraticCurveTo(w * 0.62, -h * 0.4, w * 0.42, -s * 0.04);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  // Kopf
+  ctx.beginPath(); ctx.arc(w * 0.08, -h * 0.9, s * 0.1, 0, TAU); ctx.fill(); ctx.stroke();
+  // Glanzpunkt
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.beginPath(); ctx.arc(w * 0.02, -h * 0.94, s * 0.03, 0, TAU); ctx.fill();
+  ctx.restore();
+}
+
 function palletRaw(ctx, x, y, s, color, angle, covered, symbols, light) {
   const ca = Math.cos(angle), sa = Math.sin(angle);
-  const base = covered ? CARTON : (COLORS[color] || COLORS[0]).hex;
+  const art = color === 8 && !covered;
+  const base = covered ? CARTON : art ? '#ece5d6' : (COLORS[color] || COLORS[0]).hex;
   const hex = light ? shade(base, 0.08) : base;
   const gH = (PAL_H - PAL_WOOD) * s, wH = PAL_WOOD * s;
   const big = s >= 10;
@@ -1471,6 +1522,14 @@ function palletRaw(ctx, x, y, s, color, angle, covered, symbols, light) {
     ctx.fillStyle = '#efdcab';
     ctx.fillRect(-0.42, -0.075, 0.84, 0.15);
     ctx.fillRect(-0.075, -0.42, 0.15, 0.84);
+  } else if (art) {
+    // Marmor-Kiste: dunkler Rand und Marmoradern
+    ctx.lineWidth = 0.06;
+    ctx.strokeStyle = '#3a3d4a';
+    ctx.strokeRect(-0.38, -0.38, 0.76, 0.76);
+    ctx.lineWidth = 0.02;
+    ctx.strokeStyle = 'rgba(120,110,95,0.45)';
+    ctx.beginPath(); ctx.moveTo(-0.3, 0.1); ctx.quadraticCurveTo(-0.05, -0.05, 0.3, 0.22); ctx.moveTo(-0.2, -0.3); ctx.quadraticCurveTo(0, -0.1, 0.12, -0.32); ctx.stroke();
   } else if (s >= 9) {
     ctx.fillStyle = shade(hex, -0.3);
     ctx.fillRect(-0.415, -0.014, 0.83, 0.028);
@@ -1506,8 +1565,9 @@ function palletRaw(ctx, x, y, s, color, angle, covered, symbols, light) {
     ctx.strokeStyle = shade(hex, -0.5);
     ctx.stroke();
   }
+  if (art) drawStatue(ctx, x, y, s);
   // Symbol bzw. Fragezeichen (aufrecht)
-  if ((symbols || covered) && s >= 9) {
+  if ((symbols || covered) && !art && s >= 9) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const fs = Math.round(s * (covered ? 0.5 : 0.46));
@@ -1533,7 +1593,7 @@ function palletBody(ctx, x, y, s, color, angle, covered, symbols, light) {
     const key = `${color}|${covered}|${symbols}|${light}|${sd}|${((q % 8) + 8) % 8}`;
     let spr = PSPR.get(key);
     if (!spr) {
-      const w = Math.ceil(sd * 1.6) + 4, top = Math.ceil(sd * 0.8) + 2, h = top + Math.ceil(sd * (0.8 + PAL_H)) + 2;
+      const w = Math.ceil(sd * 1.6) + 4, top = Math.ceil(sd * (color === 8 ? 1.05 : 0.8)) + 2, h = top + Math.ceil(sd * (0.8 + PAL_H)) + 2;
       const cv = newCanvas(w, h), x2 = cv.getContext('2d');
       palletRaw(x2, w / 2, top, sd, color, q * Q8, covered, symbols, light);
       spr = { cv, ox: w / 2, oy: top };

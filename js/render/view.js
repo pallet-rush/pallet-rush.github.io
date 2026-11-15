@@ -316,6 +316,7 @@ export class GameView {
       for (const t of g.trucks) if (t.state === LOT || t.state === WAIT) for (const c of g.cells(t)) cells.push(c);
       for (const gt of g.gates) { const [dx, dy] = DIRS[gt.d]; cells.push([gt.x, gt.y], [gt.x - dx, gt.y - dy], [gt.x - dx * 1.6, gt.y - dy * 1.6]); }
       for (const b of g.barriers) for (const c of b.cells) cells.push(c);
+      for (const l of g.lights || []) cells.push([l.x, l.y]);
       const ext = (Math.abs(ca) + Math.abs(sa)) / 2;
       // Begrenzung aller Felder (gedreht), dann mittig in den Hof setzen
       let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
@@ -532,6 +533,7 @@ export class GameView {
         case 'barrier': this.barrierAnim[ev.index] = now; if (!quiet) sfx.full(); this.lotDirty = true; break;
         case 'addRamp': this.layout(); this.bayOcc.push(null); this.after(0, () => this.hooks.onRampsChanged?.()); break;
         case 'shuffle': this.popAt = now; break;
+        case 'unpair': this.lotDirty = true; break;
         case 'requeue': this.popAt = now; break;
         case 'forkload': this.evForkload(ev, now); break;
         case 'won':
@@ -574,13 +576,14 @@ export class GameView {
 
   // Sind alle Buchten sichtbar belegt (geparkt oder angesteuert), darf kein
   // weiterer LKW losfahren – auch wenn die Logik schon weiter ist.
-  canDispatch() {
+  // n: wie viele LKWs gleichzeitig losfahren (Konvoi: 2)
+  canDispatch(n = 1) {
     let busy = 0;
     for (const o of this.tvs) {
       if (o.bay === undefined || o.bay < 0) continue;
       if ((o.state === 'drive' && o.phase !== 'leave') || o.state === 'crane' || o.state === 'dock') busy++;
     }
-    return busy < this.L.bays.length;
+    return busy + n <= this.L.bays.length;
   }
 
   // Logische Rampe ≠ sichtbare Bucht: Der LKW nimmt eine Bucht, die gerade frei
@@ -1142,6 +1145,7 @@ export class GameView {
     if (!g) return;
     this.drawLotObjects(ctx, now);
     this.drawLotTrucks(ctx, now);
+    this.drawLights(ctx, now, g);
     // Aus der Halle kommende LKWs liegen unter dem Hallendach
     for (const tv of this.tvs) if (tv.state === 'spawn') this.drawTv(ctx, tv, now);
     this.drawGates(ctx);
@@ -1261,6 +1265,14 @@ export class GameView {
       const text = full ? '✓' : `${n}/${cap}`;
       const w = full ? 22 : 36;
       const h = 14;
+      // Kühl-LKW: verbleibende Züge bis zum Auftauen
+      const g = this.game || this.demo;
+      if (tv.t.cool && !full && tv.state === 'dock' && g?.coolLeft) {
+        const left = Math.max(0, g.coolLeft(tv.t));
+        const urg = left <= 1;
+        const sc2 = urg ? 1 + 0.12 * Math.sin(now / 90) : 1;
+        P.drawCoolBadge(ctx, x + w / 2 + 11, y - 1, 9 * sc2, String(left), urg);
+      }
       const hex = full ? '#22c55e' : COLORS[comps[0].color].hex;
       ctx.save();
       ctx.translate(x, y);
@@ -1443,6 +1455,7 @@ export class GameView {
     for (const t of g.trucks) for (const [x, y] of g.cells(t)) cells.add(x + ',' + y);
     for (const gt of g.gates) cells.add(gt.x + ',' + gt.y);
     for (const b of g.barriers) for (const [x, y] of b.cells) cells.add(x + ',' + y);
+    for (const l of g.lights || []) cells.add(l.x + ',' + l.y);
     if (!cells.size || !L.cl) return;
     // Parkfläche: ruhiges Rechteck um alle belegbaren Felder (keine Level-Silhouette,
     // die nach dem Abfahren als Fleck stehen bliebe), mit aufgemalten Parkfeld-Kreuzen.
@@ -1855,6 +1868,17 @@ export class GameView {
     }
   }
 
+  // Ampeln (ab v0.8.0): schalten mit jedem Zug um; über den LKWs, damit sie nie verdeckt sind
+  drawLights(ctx, now, g) {
+    if (!g.lights?.length) return;
+    if (this._lm !== g.moves) { this._lm = g.moves; this._lmT = now; }
+    const fl = clamp(1 - (now - (this._lmT || 0)) / 400, 0, 1);
+    g.lights.forEach((l, i) => {
+      const p = this.gridToScreen(l.x + 0.5, l.y + 0.5);
+      P.drawTrafficLight(ctx, p.x, p.y, this.L.cl, g.lightGreen(i), fl);
+    });
+  }
+
   // Torhallen: stehen am Hofrand, Tür zum Hof, so breit wie eine Spur
   drawGates(ctx) {
     const g = this.game || this.demo;
@@ -1895,9 +1919,18 @@ export class GameView {
         P.drawBadge(ctx, tv.x + r * 0.9, tv.y + r * 0.9, r, c.color, c.initial);
       }
     }
-    // Marker: Eilaufträge, Ketten
+    // Konvois (ab v0.8.0): Kupplung zwischen den beiden Partnern
     for (const tv of lot) {
       const t = tv.t;
+      if (!(t.pair > t.id)) continue;
+      const o = this.tvs[t.pair];
+      if (!o || o.state !== 'lot') continue;
+      P.drawConvoyLink(ctx, tv.x, tv.y, o.x, o.y, Math.max(3.5, tv.cell * 0.24), now);
+    }
+    // Marker: Eilaufträge, Ketten, Kühl-LKWs
+    for (const tv of lot) {
+      const t = tv.t;
+      if (t.cool && g.status !== undefined) P.drawCoolBadge(ctx, tv.x, tv.y + L_OFF(tv), Math.max(7, tv.cell * 0.36), String(t.cool));
       if (t.rush && g.status !== undefined) {
         const left = Math.max(0, t.rush - g.moves);
         const urgent = left <= 2;

@@ -3356,3 +3356,103 @@ export function drawDepot(ctx, x, y, w, h, d, cell = 30, o = {}) {
   if (o.count != null) drawBadge(ctx, x, T + h / 2, cell * 0.3, o.count ? '#ff0a1e' : '#22a045', String(o.count));
   ctx.restore();
 }
+
+// ---------- Ab v0.8.0: Ampel, Schneeflocke, Konvoi-Kupplung ----------
+
+// Ampel auf einem Feld (Mitte x, y): Haltelinie, Mast und Kopf mit zwei Lampen.
+// green: aktueller Zustand, flash: 0..1 kurz nach dem Umschalten.
+export function drawTrafficLight(ctx, x, y, cell = 30, green = false, flash = 0) {
+  const S = cell;
+  ctx.save();
+  // Bodenfeld in Ampelfarbe
+  ctx.fillStyle = green ? 'rgba(40,200,90,0.3)' : 'rgba(255,40,50,0.35)';
+  rr(ctx, x - S * 0.47, y - S * 0.47, S * 0.94, S * 0.94, S * 0.14); ctx.fill();
+  ctx.lineWidth = Math.max(1.5, S * 0.07);
+  ctx.strokeStyle = green ? '#22c25a' : '#ff2d3d';
+  ctx.setLineDash([S * 0.14, S * 0.09]);
+  rr(ctx, x - S * 0.43, y - S * 0.43, S * 0.86, S * 0.86, S * 0.12); ctx.stroke();
+  ctx.setLineDash([]);
+  // Ampelkopf, mittig im Feld
+  softShadow(ctx, x + S * 0.06, y + S * 0.36, S * 0.22, S * 0.08, 0.35);
+  const hw = S * 0.46, hh = S * 0.82, hx = x - hw / 2, hy = y - hh / 2 - S * 0.04;
+  ctx.fillStyle = '#1d2129';
+  rr(ctx, hx, hy, hw, hh, S * 0.12); ctx.fill();
+  ctx.lineWidth = Math.max(1.2, S * 0.05);
+  ctx.strokeStyle = '#ffd21a';
+  ctx.stroke();
+  const r = hw * 0.33;
+  const lamp = (cy, on, col, glow) => {
+    if (on) {
+      ctx.save();
+      ctx.shadowColor = glow;
+      ctx.shadowBlur = S * (0.4 + flash * 0.6);
+      circle(ctx, x, cy, r * (1 + flash * 0.3), col);
+      ctx.restore();
+      circle(ctx, x - r * 0.3, cy - r * 0.3, r * 0.35, 'rgba(255,255,255,0.75)');
+    } else circle(ctx, x, cy, r, shade(col, -0.7));
+  };
+  lamp(hy + hh * 0.28, !green, '#ff3340', '#ff2030');
+  lamp(hy + hh * 0.72, green, '#3cf07a', '#20e060');
+  ctx.restore();
+}
+
+// Weiße Schneeflocke (Kühl-LKW). s = Durchmesser.
+export function drawSnowflake(ctx, x, y, s, color = '#ffffff') {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(1, s * 0.11);
+  const R = s / 2;
+  ctx.beginPath();
+  for (let k = 0; k < 6; k++) {
+    const a = (k * Math.PI) / 3, ca = Math.cos(a), sa = Math.sin(a);
+    ctx.moveTo(0, 0); ctx.lineTo(ca * R, sa * R);
+    const m = R * 0.55, b = R * 0.3;
+    for (const sg of [-1, 1]) {
+      const a2 = a + sg * 0.75;
+      ctx.moveTo(ca * m, sa * m);
+      ctx.lineTo(ca * m + Math.cos(a2) * b, sa * m + Math.sin(a2) * b);
+    }
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Kühl-Plakette: hellblaue Scheibe mit Schneeflocke und (optional) Zahl daneben.
+export function drawCoolBadge(ctx, x, y, r, text = '', urgent = false) {
+  const col = urgent ? '#ff3b5c' : '#2f9bff';
+  ctx.save();
+  circle(ctx, x + r * 0.08, y + r * 0.18, r * 1.08, 'rgba(0,0,0,0.25)');
+  circle(ctx, x, y, r * 1.08, '#ffffff');
+  circle(ctx, x, y, r * 0.88, col);
+  drawSnowflake(ctx, x, y, r * 1.25);
+  if (text !== '') {
+    const bx = x + r * 1.05, by = y + r * 0.7, br = r * 0.62;
+    circle(ctx, bx, by, br * 1.12, '#ffffff');
+    circle(ctx, bx, by, br * 0.92, '#1d2a4a');
+    outlinedText(ctx, String(text), bx, by + br * 0.05, br * 1.25, '#ffffff', '#1d2a4a', br * 0.15);
+  }
+  ctx.restore();
+}
+
+// Konvoi: Kupplungsstange zwischen zwei LKWs mit Kettengliedern.
+export function drawConvoyLink(ctx, ax, ay, bx, by, w = 6, t = 0) {
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(20,24,40,0.45)';
+  ctx.lineWidth = w + 3;
+  ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+  ctx.strokeStyle = '#ffb21e';
+  ctx.lineWidth = w;
+  ctx.setLineDash([w * 1.4, w * 0.9]);
+  ctx.lineDashOffset = -t * 0.02;
+  ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+  ctx.setLineDash([]);
+  for (const [x, y] of [[ax, ay], [bx, by]]) {
+    circle(ctx, x, y, w * 1.25, '#ffffff');
+    circle(ctx, x, y, w * 0.95, '#ff8a00');
+    circle(ctx, x, y, w * 0.4, '#3b2a10');
+  }
+  ctx.restore();
+}

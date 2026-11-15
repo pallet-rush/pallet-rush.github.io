@@ -1855,3 +1855,19 @@ body.land .duel-art svg { width: 42px; height: 42px; }
 .btn .ticket { margin-left: 6px; }
 .ticket-gain { margin-top: 8px; font-weight: 900; color: #b36b00; font-size: 16px; }
 .btn:disabled { opacity: 0.5; filter: grayscale(0.6); pointer-events: none; }
+
+/* ab v0.8.0: Countdown in Zeitleveln, Level-Typ im Banner */
+.hud-duel.countdown-mode .hd-opp { display: none; }
+.hud-duel.countdown-mode.behind .hd-me { animation: cdpulse 0.5s ease-in-out infinite alternate; }
+@keyframes cdpulse { to { transform: scale(1.12); } }
+.lb-type {
+  display: block; margin: 4px auto 0; width: max-content; padding: 2px 10px 3px; border-radius: 999px;
+  font-size: 13px; font-weight: 900; letter-spacing: 0.4px; color: #fff; background: #2f6fe8;
+  box-shadow: 0 2px 0 rgba(0,0,0,0.25);
+}
+.lb-type.timer { background: #e2462a; }
+.lb-type.narrow { background: #7a4be0; }
+.lb-type.bulk { background: #1f9a6a; }
+/* ab v0.8.0: 50 Welten – Level-Auswahl rendert nur sichtbare Abschnitte */
+.levels .level-grid { content-visibility: auto; contain-intrinsic-size: auto 260px; }
+.levels .world-banner { content-visibility: auto; contain-intrinsic-size: auto 92px; }

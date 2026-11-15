@@ -47,13 +47,15 @@ export async function run({ from = 1, to = LEVELS.length, w = 390, h = 844, seed
           // Ende: Logik fertig und alle Animationen durch (Hooks kämen erst per setTimeout)
           if (g.status !== 'playing' && view.isIdle()) { st.end = g.status; break; }
           if (g.status === 'playing' && t >= nextTap && view.canDispatch()) {
+            // Konvoi braucht zwei sichtbar freie Buchten (wie im Spiel, ab v0.8.0)
+            const fits = (tr) => view.canDispatch(g.partner(tr) ? 2 : 1);
             // 'sol': Referenzlösung der Reihe nach (Level wird gewonnen, voller Verkehr);
             // 'rand': zufällige erlaubte Züge
             let cand;
             if (policy === 'sol') {
               const id = g.level.sol[solI];
-              cand = id != null && g.canExit(g.trucks[id]) ? [g.trucks[id]] : [];
-            } else cand = g.trucks.filter((tr) => tr.state === 0 && g.canExit(tr));
+              cand = id != null && g.canExit(g.trucks[id]) && fits(g.trucks[id]) ? [g.trucks[id]] : [];
+            } else cand = g.trucks.filter((tr) => tr.state === 0 && g.canExit(tr) && fits(tr));
             if (cand.length) {
               if (policy === 'sol') solI++;
               const tr = cand[Math.floor(rng() * cand.length)];
